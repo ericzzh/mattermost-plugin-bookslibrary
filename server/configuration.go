@@ -1,8 +1,10 @@
 package main
 
 import (
+	// "fmt"
 	"reflect"
 
+	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/pkg/errors"
 )
 
@@ -18,6 +20,9 @@ import (
 // If you add non-reference types to your configuration struct, be sure to rewrite Clone as a deep
 // copy appropriate for your types.
 type configuration struct {
+	TeamName                  string
+	BooksChannelName          string
+	BorrowWorkflowChannelName string
 }
 
 // Clone shallow copies the configuration. Your implementation may require a deep copy if
@@ -79,5 +84,89 @@ func (p *Plugin) OnConfigurationChange() error {
 
 	p.setConfiguration(configuration)
 
+	// ensure book library bot
+
+	botID, ensureBotError := p.Helpers.EnsureBot(&model.Bot{
+		Username:    "bookslibrary",
+		DisplayName: "Books Library Bot",
+		Description: "A bot account created by books library plugin.",
+	})
+	if ensureBotError != nil {
+		return errors.Wrap(ensureBotError, "failed to ensure books libary bot.")
+	}
+
+	p.botID = botID
+
+	team, appErr := p.ensureTeam(configuration.TeamName)
+	if appErr != nil {
+		return errors.Wrap(appErr, "failed to ensure team.")
+	}
+	p.team = team
+
+	bkchannel, appErr := p.ensureChannel(team.Id, configuration.BooksChannelName,"Books", "Channel for books library.", model.CHANNEL_OPEN)
+	if appErr != nil {
+		return errors.Wrap(appErr, "failed to ensure channel")
+	}
+	p.booksChannel = bkchannel
+
+	bchannel, appErr := p.ensureChannel(team.Id, configuration.BorrowWorkflowChannelName, "Borrows","Channel for borrowing workflow.", model.CHANNEL_PRIVATE)
+	if appErr != nil {
+		return errors.Wrap(appErr, "failed to ensure channel")
+	}
+	p.borrowChannel = bchannel
+
 	return nil
+}
+
+func (p *Plugin) ensureTeam(name string) (*model.Team, error) {
+
+	// fmt.Printf("********* book library debug.. config team %s", name)
+
+	team, appErr := p.API.GetTeamByName(name)
+
+	if appErr != nil && appErr.Id != "app.team.get_by_name.missing.app_error" {
+		return nil, errors.Wrapf(appErr, "failed to get Team by name:%s", name)
+	}
+
+	if appErr == nil {
+		return team, nil
+	}
+
+	team, appErr = p.API.CreateTeam(&model.Team{
+		Name:        name,
+                DisplayName: "Books Library",
+		Description: "Books Library",
+		Type:        model.TEAM_INVITE,
+	})
+
+	if appErr != nil {
+		return nil, errors.Wrapf(appErr, "failed to create team with name:%s", name)
+	}
+
+	return team, nil
+
+}
+
+func (p *Plugin) ensureChannel(teamid, name, displayName, purpose, chtype string) (*model.Channel, error) {
+	channel, appErr := p.API.GetChannelByName(teamid, name, false)
+
+	if appErr != nil && appErr.Id != "app.channel.get_by_name.missing.app_error" {
+		return nil, errors.Wrapf(appErr, "failed to get channel by name: %s", name)
+	}
+
+	if appErr == nil {
+		return channel, nil
+	}
+	channel, appErr = p.API.CreateChannel(&model.Channel{
+		TeamId:  teamid,
+		Name:    name,
+                DisplayName: displayName,
+  		Purpose: purpose,
+		Type:    chtype,
+	})
+
+	if appErr != nil {
+		return nil, errors.Wrapf(appErr, "faield to create channel with name: %s", name)
+	}
+	return channel, nil
 }

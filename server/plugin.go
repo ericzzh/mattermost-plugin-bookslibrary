@@ -1,11 +1,10 @@
 package main
 
 import (
-	"fmt"
-	"net/http"
 	"sync"
-
+	"net/http"
 	"github.com/mattermost/mattermost-server/v5/plugin"
+	"github.com/mattermost/mattermost-server/v5/model"
 )
 
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.
@@ -18,11 +17,23 @@ type Plugin struct {
 	// configuration is the active plugin configuration. Consult getConfiguration and
 	// setConfiguration for usage.
 	configuration *configuration
+
+	botID string
+
+	team *model.Team
+
+	borrowChannel *model.Channel
+
+	booksChannel *model.Channel
 }
 
 // ServeHTTP demonstrates a plugin that handles HTTP requests by greeting the world.
 func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Hello, world!")
+	switch r.URL.Path {
+	case "/borrow":
+		p.handleBorrowRequest(c, w, r)
+	default:
+		http.NotFound(w, r)
+	}
 }
 
-// See https://developers.mattermost.com/extend/plugins/server/reference/
