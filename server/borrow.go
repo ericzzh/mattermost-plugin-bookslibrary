@@ -30,9 +30,9 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 	}
 
 	//make borrow request from key
-	borrowRequest, err := p._makeBorrowRequest(borrowRequestKey, borrowRequestKey.BorrowerUser)
+	borrowRequestMaster, err := p._makeBorrowRequest(borrowRequestKey, borrowRequestKey.BorrowerUser, []string{MASTER}, nil)
 	if err != nil {
-		p.API.LogError("Failed to make borrow request.", "err", fmt.Sprintf("%+v", err))
+		p.API.LogError("Failed to make borrow request.", "err", fmt.Sprintf("%+v", err), "role", MASTER)
 		resp, _ := json.Marshal(Result{
 			Error: "Failed to make borrow request.",
 		})
@@ -47,7 +47,7 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 	created := []*model.Post{}
 
 	//post a masterPost
-	mb, mp, err := p._makeAndSendBorrowRequest("", p.borrowChannel.Id, []string{MASTER}, borrowRequest)
+	mb, mp, err := p._makeAndSendBorrowRequest("", p.borrowChannel.Id, []string{MASTER}, borrowRequestMaster)
 	if err != nil {
 		p.API.LogError("Failed to post.", "role", MASTER, "err", fmt.Sprintf("%+v", err))
 		resp, _ := json.Marshal(Result{
@@ -62,9 +62,9 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 
 	//post a borrowerPost
 	roleByUser := map[string][]string{}
-	roleByUser[borrowRequest.BorrowerUser] = append(roleByUser[borrowRequest.BorrowerUser], BORROWER)
-	roleByUser[borrowRequest.LibworkerUser] = append(roleByUser[borrowRequest.LibworkerUser], LIBWORKER)
-	for _, kp := range borrowRequest.KeeperUsers {
+	roleByUser[borrowRequestMaster.BorrowerUser] = append(roleByUser[borrowRequestMaster.BorrowerUser], BORROWER)
+	roleByUser[borrowRequestMaster.LibworkerUser] = append(roleByUser[borrowRequestMaster.LibworkerUser], LIBWORKER)
+	for _, kp := range borrowRequestMaster.KeeperUsers {
 		roleByUser[kp] = append(roleByUser[kp], KEEPER)
 	}
 
@@ -74,6 +74,18 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 
 	for user, roles := range roleByUser {
 
+		//make borrow request from key
+		borrowRequest, err := p._makeBorrowRequest(borrowRequestKey, borrowRequestKey.BorrowerUser, roles, borrowRequestMaster)
+		if err != nil {
+			p.API.LogError("Failed to make borrow request.", "err", fmt.Sprintf("%+v", err), "roles", strings.Join(roles, ","))
+			resp, _ := json.Marshal(Result{
+				Error: "Failed to make borrow request.",
+			})
+
+			w.Write(resp)
+			return
+
+		}
 		bb, bp, err := p._makeAndSendBorrowRequest(user, "", roles, borrowRequest)
 		if err != nil {
 			p.API.LogError("Failed to post.", "roles", strings.Join(roles, ","), "user", user, "err", fmt.Sprintf("%+v", err))
@@ -95,58 +107,6 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 		borrowByUser[user] = bb
 	}
 
-	// 	bb, bp, err := p._makeAndSendBorrowRequest(borrowRequest.BorrowerUser, "", BORROWER, borrowRequest)
-	// 	if err != nil {
-	// 		p.API.LogError("Failed to post.", "role", BORROWER, "user", borrowRequest.BorrowerUser, "err", fmt.Sprintf("%+v", err))
-	// 		resp, _ := json.Marshal(Result{
-	// 			Error: "Failed to post a borrower record.",
-	// 		})
-	// 		p._rollBackCreated(created)
-	// 		w.Write(resp)
-	// 		return
-	//
-	// 	}
-	// 	created = append(created, bp)
-	//
-	// 	//post a libworker record
-	// 	lb, lp, err := p._makeAndSendBorrowRequest(borrowRequest.LibworkerUser, "", LIBWORKER, borrowRequest)
-	// 	if err != nil {
-	// 		p.API.LogError("Failed to post.", "role", LIBWORKER, "user", borrowRequest.LibworkerUser, "err", fmt.Sprintf("%+v", err))
-	// 		resp, _ := json.Marshal(Result{
-	// 			Error: "Failed to post a libworker record.",
-	// 		})
-	// 		p._rollBackCreated(created)
-	// 		w.Write(resp)
-	// 		return
-	//
-	// 	}
-	// 	created = append(created, lp)
-
-	// 	//post a keeper record
-	// 	kpIds := []string{}
-	// 	kps := map[string]*model.Post{}
-	// 	kbs := map[string]*Borrow{}
-	//
-	// 	for _, user := range borrowRequest.KeeperUsers {
-	//
-	// 		kb, kp, err := p._makeAndSendBorrowRequest(user, "", KEEPER, borrowRequest)
-	//
-	// 		if err != nil {
-	// 			p.API.LogError("Failed to post.", "role", KEEPER, "user", user, "err", fmt.Sprintf("%+v", err))
-	// 			resp, _ := json.Marshal(Result{
-	// 				Error: "Failed to post a keeper record.",
-	// 			})
-	// 			p._rollBackCreated(created)
-	// 			w.Write(resp)
-	// 			return
-	//
-	// 		}
-	// 		kpIds = append(kpIds, kp.Id)
-	// 		kps[user] = kp
-	// 		kbs[user] = kb
-	// 		created = append(created, kp)
-	// 	}
-
 	//Update relationships
 	//Master
 
@@ -154,8 +114,8 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 	for _, kp := range postByRole[KEEPER] {
 		kpIds = append(kpIds, kp.Id)
 	}
-        //Just for easy tesing
-        sort.Strings(kpIds)
+	//Just for easy tesing
+	sort.Strings(kpIds)
 
 	err = p._updateRelations(mp, RelationKeys{
 		Book:      borrowRequestKey.BookPostId,
@@ -182,7 +142,7 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 		}, borrowByUser[user])
 		if err != nil {
 			p.API.LogError("Failed to update relationships.",
-				"role", strings.Join(roleByUser[user],","), "user", user, "err", fmt.Sprintf("%+v", err))
+				"role", strings.Join(roleByUser[user], ","), "user", user, "err", fmt.Sprintf("%+v", err))
 			resp, _ := json.Marshal(Result{
 				Error: "Failed to update relationships.",
 			})
@@ -192,54 +152,6 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 		}
 	}
 
-	//Borrower
-	// 	err = p._updateRelations(bp, RelationKeys{
-	// 		Book:   borrowRequestKey.BookPostId,
-	// 		Master: mp.Id,
-	// 	}, bb)
-	// 	if err != nil {
-	// 		p.API.LogError("Failed to update borrower record's relationships.", "role", BORROWER, "user", borrowRequest.BorrowerUser, "err", fmt.Sprintf("%+v", err))
-	// 		resp, _ := json.Marshal(Result{
-	// 			Error: "Failed to update borrower record's relationships.",
-	// 		})
-	// 		p._rollBackCreated(created)
-	// 		w.Write(resp)
-	// 		return
-	// 	}
-	//
-	// 	//Library worker
-	// 	err = p._updateRelations(lp, RelationKeys{
-	// 		Book:   borrowRequestKey.BookPostId,
-	// 		Master: mp.Id,
-	// 	}, lb)
-	// 	if err != nil {
-	// 		p.API.LogError("Failed to update libworker's relationships.", "role", LIBWORKER, "user", borrowRequest.LibworkerUser, "err", fmt.Sprintf("%+v", err))
-	// 		resp, _ := json.Marshal(Result{
-	// 			Error: "Failed to update libworker's relationships..",
-	// 		})
-	// 		p._rollBackCreated(created)
-	// 		w.Write(resp)
-	// 		return
-	// 	}
-	//
-	// 	//Keeper
-	// 	for _, user := range borrowRequest.KeeperUsers {
-	// 		err = p._updateRelations(kps[user], RelationKeys{
-	// 			Book:   borrowRequestKey.BookPostId,
-	// 			Master: mp.Id,
-	// 		}, kbs[user])
-	//
-	// 		if err != nil {
-	// 			p.API.LogError("Failed to update keeper record's relationships.", "role", KEEPER, "user", user, "err", fmt.Sprintf("%+v", err))
-	// 			resp, _ := json.Marshal(Result{
-	// 				Error: "Failed to update keeper record's relationships.",
-	// 			})
-	// 			p._rollBackCreated(created)
-	// 			w.Write(resp)
-	// 			return
-	//
-	// 		}
-	// 	}
 	resp, _ := json.Marshal(Result{
 		Error: "",
 	})
@@ -314,51 +226,86 @@ func (p *Plugin) _updateRelations(post *model.Post, relations RelationKeys, borr
 
 }
 
-func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string) (*BorrowRequest, error) {
+func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, roles []string, masterBr *BorrowRequest) (*BorrowRequest, error) {
 
 	var err error
-
-	bookPost, appErr := p.API.GetPost(bqk.BookPostId)
-
-	if appErr != nil {
-		return nil, errors.Wrapf(appErr, "Failed to get book post id %s.", bqk.BookPostId)
-	}
-
 	var book Book
-	if err := json.Unmarshal([]byte(bookPost.Message), &book); err != nil {
-		return nil, errors.Wrapf(err, "Failed to unmarshal bookpost. post id:%s", bqk.BookPostId)
-	}
 
 	bq := new(BorrowRequest)
 
-	bq.BookPostId = bqk.BookPostId
-	bq.BookId = book.Id
-	bq.BookName = book.Name
-	bq.Author = book.Author
-	bq.BorrowerUser = borrowerUser
-	if bq.BorrowerName, err = p._getDisplayNameByUser(borrowerUser); err != nil {
-		return nil, errors.Wrapf(err, "Failed to get borrower display name. user:%s", borrowerUser)
-	}
-	bq.LibworkerUser = p._distributeWorker(book.LibworkerUsers)
-	if bq.LibworkerName, err = p._getDisplayNameByUser(bq.LibworkerUser); err != nil {
-		return nil, errors.Wrapf(err, "Failed to get library worker display name. user:%s", bq.LibworkerUser)
-	}
-	bq.KeeperUsers = book.KeeperUsers
-	bq.KeeperNames = book.KeeperNames
-	bq.RequestDate = time.Now().UnixNano() / int64(time.Millisecond)
-	bq.Status = STATUS_REQUESTED
-        bq.WorkflowType = WORKFLOW_BORROW
-        bq.Worflow = []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED}
+	rolesSet := ConvertStringArrayToSet(roles)
 
-	bq.Tags = []string{
-		"#STATUS_EQ_" + bq.Status,
-		"#BORROWERUSER_EQ_" + bq.BorrowerUser,
+	if masterBr == nil {
+
+		bookPost, appErr := p.API.GetPost(bqk.BookPostId)
+
+		if appErr != nil {
+			return nil, errors.Wrapf(appErr, "Failed to get book post id %s.", bqk.BookPostId)
+		}
+
+		if err := json.Unmarshal([]byte(bookPost.Message), &book); err != nil {
+			return nil, errors.Wrapf(err, "Failed to unmarshal bookpost. post id:%s", bqk.BookPostId)
+		}
+
+		bq.BookPostId = bqk.BookPostId
+		bq.BookId = book.Id
+		bq.BookName = book.Name
+		bq.Author = book.Author
+		bq.RequestDate = time.Now().UnixNano() / int64(time.Millisecond)
+	} else {
+
+		bq.BookPostId = masterBr.BookPostId
+		bq.BookId = masterBr.BookId
+		bq.BookName = masterBr.BookName
+		bq.Author = masterBr.Author
+		bq.RequestDate = masterBr.RequestDate
+	}
+
+	bq.Tags = []string{}
+
+	if ConstainsInStringSet(rolesSet, []string{MASTER, BORROWER, LIBWORKER}) {
+		bq.BorrowerUser = borrowerUser
+		if bq.BorrowerName, err = p._getDisplayNameByUser(borrowerUser); err != nil {
+			return nil, errors.Wrapf(err, "Failed to get borrower display name. user:%s", borrowerUser)
+		}
+		bq.Tags = append(bq.Tags, []string{
+			"#BORROWERUSER_EQ_" + bq.BorrowerUser,
+		}...)
+	}
+
+	if masterBr == nil {
+		bq.LibworkerUser = p._distributeWorker(book.LibworkerUsers)
+		if bq.LibworkerName, err = p._getDisplayNameByUser(bq.LibworkerUser); err != nil {
+			return nil, errors.Wrapf(err, "Failed to get library worker display name. user:%s", bq.LibworkerUser)
+		}
+	} else {
+		bq.LibworkerUser = masterBr.LibworkerUser
+		bq.LibworkerName = masterBr.LibworkerName
+	}
+
+	bq.Tags = append(bq.Tags, []string{
 		"#LIBWORKERUSER_EQ_" + bq.LibworkerUser,
+	}...)
+
+	if ConstainsInStringSet(rolesSet, []string{MASTER, LIBWORKER, KEEPER}) {
+		if masterBr == nil {
+
+			bq.KeeperUsers = book.KeeperUsers
+			bq.KeeperNames = book.KeeperNames
+		} else {
+
+			bq.KeeperUsers = masterBr.KeeperUsers
+			bq.KeeperNames = masterBr.KeeperNames
+		}
+		for _, k := range bq.KeeperUsers {
+			bq.Tags = append(bq.Tags, "#KEEPERUSER_EQ_"+k)
+		}
 	}
 
-	for _, k := range bq.KeeperUsers {
-		bq.Tags = append(bq.Tags, "#KEEPERUSER_EQ_"+k)
-	}
+	bq.WorkflowType = WORKFLOW_BORROW
+
+	p._setVisibleWorkflowByRoles(rolesSet, bq)
+	p._setStatusByWorkflow(STATUS_REQUESTED, bq)
 
 	return bq, nil
 }
@@ -377,4 +324,83 @@ func (p *Plugin) _distributeWorker(libworkers []string) string {
 	rand.Seed(time.Now().UnixNano())
 	who := rand.Intn(len(libworkers))
 	return libworkers[who]
+}
+
+// func (p *Plugin) _adjustFieldsByRoles(roles []string, brFull *BorrowRequest) *BorrowRequest {
+// 	var brDup *BorrowRequest
+// 	DeepCopyBorrowRequest(brDup, brFull)
+//
+// 	p._clearAllVisible(brDup)
+// 	for _, role := range roles {
+// 		p._setVisibleFieldsByRole(role, brDup, brFull)
+// 	}
+//
+// 	// stepsSet := ConvertStringArrayToSet(brDup.Worflow)
+//
+// 	return nil
+// }
+//
+// func (p *Plugin) _clearAllVisible(br *BorrowRequest) {
+// 	br.KeeperUsers = []string{}
+// 	br.KeeperNames = []string{}
+// 	br.BorrowerUser = ""
+// 	br.BorrowerName = ""
+// 	br.Worflow = []string{}
+// 	br.Status = ""
+// 	br.Tags = []string{}
+// }
+//
+// func (p *Plugin) _setVisibleFieldsByRole(role string, br *BorrowRequest, brFull *BorrowRequest) {
+//
+// 	switch role {
+// 	case BORROWER:
+// 		br.BorrowerUser = brFull.BorrowerUser
+// 		br.BorrowerName = brFull.BorrowerName
+// 		br.Tags = append(br.Tags)
+// 	case LIBWORKER:
+// 		br.BorrowerUser = brFull.BorrowerUser
+// 		br.BorrowerName = brFull.BorrowerName
+// 		br.KeeperUsers = brFull.KeeperUsers
+// 		br.KeeperNames = brFull.KeeperNames
+// 	case KEEPER:
+// 		br.KeeperUsers = brFull.KeeperUsers
+// 		br.KeeperNames = brFull.KeeperNames
+// 	default:
+// 	}
+//
+// }
+
+func (p *Plugin) _setStatusByWorkflow(status string, br *BorrowRequest) {
+	stepsSet := ConvertStringArrayToSet(br.Worflow)
+
+	if ConstainsInStringSet(stepsSet, []string{status}) {
+		br.Status = status
+		br.Tags = append(br.Tags, []string{
+			"#STATUS_EQ_" + br.Status,
+		}...)
+	}
+
+}
+
+func (p *Plugin) _setVisibleWorkflowByRoles(rolesSet map[string]bool, br *BorrowRequest) {
+	switch br.WorkflowType {
+	case WORKFLOW_BORROW:
+		br.Worflow = append(br.Worflow, STATUS_REQUESTED)
+		br.Worflow = append(br.Worflow, STATUS_CONFIRMED)
+		if ConstainsInStringSet(rolesSet, []string{MASTER, BORROWER, LIBWORKER}) {
+			br.Worflow = append(br.Worflow, STATUS_DELIVIED)
+		}
+	case WORKFLOW_RENEW:
+		if ConstainsInStringSet(rolesSet, []string{MASTER, BORROWER, LIBWORKER}) {
+			br.Worflow = append(br.Worflow, STATUS_RENEWED)
+			br.Worflow = append(br.Worflow, STATUS_CONFIRMED)
+		}
+	case WORKFLOW_RETURN:
+		br.Worflow = append(br.Worflow, STATUS_REQUESTED)
+		br.Worflow = append(br.Worflow, STATUS_CONFIRMED)
+		if ConstainsInStringSet(rolesSet, []string{MASTER, KEEPER, LIBWORKER}) {
+			br.Worflow = append(br.Worflow, STATUS_RETURNED)
+		}
+	}
+
 }

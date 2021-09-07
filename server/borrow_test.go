@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/mattermost/mattermost-server/v5/model"
-	"github.com/mattermost/mattermost-server/v5/plugin/plugintest"
+	// "github.com/mattermost/mattermost-server/v5/plugin/plugintest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	// "github.com/stretchr/testify/require"
@@ -19,171 +19,37 @@ import (
 func TestHandleBorrow(t *testing.T) {
 	_ = fmt.Println
 
-	bookPostId := model.NewId()
+        td := NewTestData()
 
-	botId := model.NewId()
-	borChannelId := model.NewId()
-	borTeamId := model.NewId()
+	bookPostId := td.BookPostId
 
-	aBook := &Book{
-		Id:                "zzh-book-001",
-		Name:              "a test book",
-		NameEn:            "a test book",
-		Category1:         "C1",
-		Category2:         "C2",
-		Category3:         "C3",
-		Author:            "zzh",
-		AuthorEn:          "zzh",
-		Translator:        "eric",
-		TranslatorEn:      "eric",
-		Publisher:         "pub1",
-		PublisherEn:       "pub1En",
-		PublishDate:       "20200821",
-		LibworkerUsers:    []string{"worker1", "worker2"},
-		LibworkerNames:    []string{"wkname1", "wkname2"},
-		KeeperUsers:       []string{"kpuser1", "kpuser2"},
-		KeeperNames:       []string{"kpname1", "kpname2"},
-		IsAllowedToBorrow: true,
-		Tags:              []string{},
-	}
-	aBookJson, _ := json.MarshalIndent(aBook, "", "")
-	borrowUser := "bor"
+	borChannelId := td.BorChannelId
 
-	reqKey := BorrowRequestKey{
-		BookPostId:   bookPostId,
-		BorrowerUser: borrowUser,
-	}
-	reqKeyJson, _ := json.Marshal(reqKey)
+	aBook := td.ABook
+	borrowUser := td.BorrowUser
 
-	borId := model.NewId()
-	worker1Id := model.NewId()
-	worker2Id := model.NewId()
-	keeper1Id := model.NewId()
-	keeper2Id := model.NewId()
-	borId_botId := model.NewId()
-	worker1Id_botId := model.NewId()
-	worker2Id_botId := model.NewId()
-	keeper1Id_botId := model.NewId()
-	keeper2Id_botId := model.NewId()
+	reqKey := td.ReqKey
+        reqKeyJson, _ := json.Marshal(reqKey)
 
-	apiMockCommon := func() *plugintest.API {
-		api := &plugintest.API{}
+	borId_botId := td.BorId_botId
+	worker1Id_botId := td.Worker1Id_botId
+	worker2Id_botId := td.Worker2Id_botId
+	keeper1Id_botId := td.Keeper1Id_botId
+	keeper2Id_botId := td.Keeper2Id_botId
 
-		api.On("GetPost", bookPostId).Return(&model.Post{
-			Message: string(aBookJson),
-		}, nil)
+	apiMockCommon := td.ApiMockCommon
 
-		api.On("GetUserByUsername", "bor").Return(&model.User{
-			Id:        borId,
-			LastName:  "book",
-			FirstName: "bor",
-		}, nil)
+	newMockPlugin := td.NewMockPlugin
 
-		api.On("GetUserByUsername", "worker1").Return(&model.User{
-			Id:        worker1Id,
-			LastName:  "wk",
-			FirstName: "name1",
-		}, nil)
+	matchPost := td.MatchPostByChannel 
+	matchPostById := td.MatchPostById
 
-		api.On("GetUserByUsername", "worker2").Return(&model.User{
-			Id:        worker2Id,
-			LastName:  "wk",
-			FirstName: "name2",
-		}, nil)
-
-		api.On("GetUserByUsername", "kpuser1").Return(&model.User{
-			Id:        keeper1Id,
-			LastName:  "kp",
-			FirstName: "name1",
-		}, nil)
-
-		api.On("GetUserByUsername", "kpuser2").Return(&model.User{
-			Id:        keeper2Id,
-			LastName:  "kp",
-			FirstName: "name2",
-		}, nil)
-
-		api.On("GetDirectChannel", borId, botId).Return(&model.Channel{
-			Id: borId_botId,
-		}, nil)
-
-		api.On("GetDirectChannel", worker1Id, botId).Return(&model.Channel{
-			Id: worker1Id_botId,
-		}, nil)
-
-		api.On("GetDirectChannel", worker2Id, botId).Return(&model.Channel{
-			Id: worker2Id_botId,
-		}, nil)
-
-		api.On("GetDirectChannel", keeper1Id, botId).Return(&model.Channel{
-			Id: keeper1Id_botId,
-		}, nil)
-
-		api.On("GetDirectChannel", keeper2Id, botId).Return(&model.Channel{
-			Id: keeper2Id_botId,
-		}, nil)
-
-		api.On("LogError",
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string")).Return()
-		api.On("LogError",
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string")).Return()
-		api.On("LogError",
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string")).Return()
-		api.On("LogError",
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("[]string"),
-			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string")).Return()
-		api.On("DeletePost", mock.AnythingOfType("string")).Return(nil)
-
-		return api
-
-	}
-
-	newMockPlugin := func() *Plugin {
-		return &Plugin{
-			botID: botId,
-			borrowChannel: &model.Channel{
-				Id: borChannelId,
-			},
-			team: &model.Team{
-				Id: borTeamId,
-			},
-		}
-	}
-
-	matchPost := func(channelId string) func(*model.Post) bool {
-		return func(post *model.Post) bool {
-			return post.ChannelId == channelId
-		}
-	}
-
-	matchPostById := func(PostId string) func(*model.Post) bool {
-		return func(post *model.Post) bool {
-			return post.Id == PostId
-		}
-	}
-	t.Run("_makeBorrowRequest", func(t *testing.T) {
+        t.Run("_makeBorrowRequest", func(t *testing.T) {
 		api := apiMockCommon()
 		plugin := newMockPlugin()
 		plugin.SetAPI(api)
 
-		br, _ := plugin._makeBorrowRequest(&reqKey, borrowUser)
+		br, _ := plugin._makeBorrowRequest(&reqKey, borrowUser, []string{MASTER}, nil)
 		assert.Equal(t, aBook.Id, br.BookId, "BookId")
 		assert.Equal(t, aBook.Name, br.BookName, "BookName")
 		assert.Equal(t, aBook.Author, br.Author, "Author")
@@ -201,11 +67,11 @@ func TestHandleBorrow(t *testing.T) {
 		assert.Equal(t, []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED}, br.Worflow, "WorkflowType")
 		assert.Equal(t, STATUS_REQUESTED, br.Status, "Status")
 		assert.Equal(t, []string{
-			"#STATUS_EQ_" + STATUS_REQUESTED,
 			"#BORROWERUSER_EQ_" + borrowUser,
 			"#LIBWORKERUSER_EQ_" + br.LibworkerUser,
 			"#KEEPERUSER_EQ_" + aBook.KeeperUsers[0],
 			"#KEEPERUSER_EQ_" + aBook.KeeperUsers[1],
+			"#STATUS_EQ_" + STATUS_REQUESTED,
 		}, br.Tags, "Tags")
 
 	})
@@ -215,108 +81,22 @@ func TestHandleBorrow(t *testing.T) {
 		plugin := newMockPlugin()
 		plugin.SetAPI(api)
 
-		realbrPosts := map[string]*model.Post{}
-		realbrUpdPosts := map[string]*model.Post{}
 		var realbr *Borrow
-
-		runfn := func(args mock.Arguments) {
-			realbrPost := args.Get(0).(*model.Post)
-			realbrPosts[realbrPost.ChannelId] = realbrPost
-		}
-
-		runfnUpd := func(args mock.Arguments) {
-			realbrPost := args.Get(0).(*model.Post)
-			realbrUpdPosts[realbrPost.ChannelId] = realbrPost
-		}
-
-		createdPid := map[string]string{
-			plugin.borrowChannel.Id: model.NewId(),
-			borId_botId:             model.NewId(),
-			worker1Id_botId:         model.NewId(),
-			worker2Id_botId:         model.NewId(),
-			keeper1Id_botId:         model.NewId(),
-			keeper2Id_botId:         model.NewId(),
-		}
-
-		api.On("CreatePost", mock.MatchedBy(matchPost(plugin.borrowChannel.Id))).Run(runfn).
-			Return(&model.Post{
-				Id:        createdPid[plugin.borrowChannel.Id],
-				ChannelId: plugin.borrowChannel.Id,
-				UserId:    botId,
-				Type:      "custom_borrow_type",
-			}, nil)
-		api.On("CreatePost", mock.MatchedBy(matchPost(borId_botId))).Run(runfn).
-			Return(&model.Post{
-				Id:        createdPid[borId_botId],
-				ChannelId: borId_botId,
-				UserId:    botId,
-				Type:      "custom_borrow_type",
-			}, nil)
-		api.On("CreatePost", mock.MatchedBy(matchPost(worker1Id_botId))).Run(runfn).
-			Return(&model.Post{
-				Id:        createdPid[worker1Id_botId],
-				ChannelId: worker1Id_botId,
-				UserId:    botId,
-				Type:      "custom_borrow_type",
-			}, nil)
-		api.On("CreatePost", mock.MatchedBy(matchPost(worker2Id_botId))).Run(runfn).
-			Return(&model.Post{
-				Id:        createdPid[worker2Id_botId],
-				ChannelId: worker2Id_botId,
-				UserId:    botId,
-				Type:      "custom_borrow_type",
-			}, nil)
-		api.On("CreatePost", mock.MatchedBy(matchPost(keeper1Id_botId))).Run(runfn).
-			Return(&model.Post{
-				Id:        createdPid[keeper1Id_botId],
-				ChannelId: keeper1Id_botId,
-				UserId:    botId,
-				Type:      "custom_borrow_type",
-			}, nil)
-		api.On("CreatePost", mock.MatchedBy(matchPost(keeper2Id_botId))).Run(runfn).
-			Return(&model.Post{
-				Id:        createdPid[keeper2Id_botId],
-				ChannelId: keeper2Id_botId,
-				UserId:    botId,
-				Type:      "custom_borrow_type",
-			}, nil)
-
-		api.On("UpdatePost", mock.MatchedBy(matchPost(plugin.borrowChannel.Id))).Run(runfnUpd).
-			Return(&model.Post{Id: createdPid[plugin.borrowChannel.Id]}, nil)
-		api.On("UpdatePost", mock.MatchedBy(matchPost(borId_botId))).Run(runfnUpd).
-			Return(&model.Post{Id: createdPid[borId_botId]}, nil)
-		api.On("UpdatePost", mock.MatchedBy(matchPost(worker1Id_botId))).Run(runfnUpd).
-			Return(&model.Post{Id: createdPid[worker1Id_botId]}, nil)
-		api.On("UpdatePost", mock.MatchedBy(matchPost(worker2Id_botId))).Run(runfnUpd).
-			Return(&model.Post{Id: createdPid[worker2Id_botId]}, nil)
-		api.On("UpdatePost", mock.MatchedBy(matchPost(keeper1Id_botId))).Run(runfnUpd).
-			Return(&model.Post{Id: createdPid[keeper1Id_botId]}, nil)
-		api.On("UpdatePost", mock.MatchedBy(matchPost(keeper2Id_botId))).Run(runfnUpd).
-			Return(&model.Post{Id: createdPid[keeper2Id_botId]}, nil)
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/borrow", bytes.NewReader(reqKeyJson))
-		plugin.ServeHTTP(nil, w, r)
+                realbrPosts, realbrUpdPosts,createdPid := GenerateBorrowRequest(td, plugin, api)
 
 		//------- Verfication -------
 		realbrMsg := realbrPosts[plugin.borrowChannel.Id].Message
 		json.Unmarshal([]byte(realbrMsg), &realbr)
 
 		realwk := realbr.DataOrImage.LibworkerUser
-		realReqDate := realbr.DataOrImage.RequestDate
 
-		//make sure we have the same library worker
-		br, _ := plugin._makeBorrowRequest(&reqKey, borrowUser)
-		for br.LibworkerUser != realwk {
-			br, _ = plugin._makeBorrowRequest(&reqKey, borrowUser)
-		}
-		br.RequestDate = realReqDate
-
-		var dirWkChId string
-		if br.LibworkerUser == "worker1" {
+		var dirWkChId, realwkName string
+		if realwk == "worker1" {
 			dirWkChId = worker1Id_botId
+			realwkName = "wkname1"
 		} else {
 			dirWkChId = worker2Id_botId
+			realwkName = "wkname2"
 		}
 
 		for _, role := range []struct {
@@ -324,6 +104,8 @@ func TestHandleBorrow(t *testing.T) {
 			channelId    string
 			borrower     string
 			borrowerName string
+                        worker       string
+                        workerName   string
 			keeperUsers  []string
 			keeperNames  []string
 			workflow     []string
@@ -332,80 +114,114 @@ func TestHandleBorrow(t *testing.T) {
 			{
 				role:         MASTER,
 				channelId:    plugin.borrowChannel.Id,
-				borrower:     br.BorrowerUser,
-				borrowerName: br.BorrowerName,
+				borrower:     borrowUser,
+				borrowerName: "bookbor",
+                                worker:       realwk,
+                                workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
 				keeperNames:  []string{"kpname1", "kpname2"},
 				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
 				tags: []string{
+					"#BORROWERUSER_EQ_" + borrowUser,
+					"#LIBWORKERUSER_EQ_" + realwk,
+					"#KEEPERUSER_EQ_" + "kpuser1",
+					"#KEEPERUSER_EQ_" + "kpuser2",
 					"#STATUS_EQ_REQUESTED",
-					"#BORROWERUSER_EQ_" + br.BorrowerUser,
-					"#LIBWORKERUSER_EQ_" + br.LibworkerUser,
-					"#KEEPERUSER_EQ_" + br.KeeperUsers[0],
-					"#KEEPERUSER_EQ_" + br.KeeperUsers[1],
 				},
 			},
 			{
-				role:        BORROWER,
-				channelId:   borId_botId,
-				borrower:     br.BorrowerUser,
-				borrowerName: br.BorrowerName,
-				keeperUsers: []string{},
-				keeperNames: []string{},
-				workflow:    []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
+				role:         BORROWER,
+				channelId:    borId_botId,
+				borrower:     borrowUser,
+				borrowerName: "bookbor",
+                                worker:       realwk,
+                                workerName:   realwkName,
+				keeperUsers:  []string{},
+				keeperNames:  []string{},
+				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
 				tags: []string{
+					"#BORROWERUSER_EQ_" + borrowUser,
+					"#LIBWORKERUSER_EQ_" + realwk,
 					"#STATUS_EQ_REQUESTED",
-					"#BORROWERUSER_EQ_" + br.BorrowerUser,
-					"#LIBWORKERUSER_EQ_" + br.LibworkerUser,
 				},
 			},
 			{
-				role:        LIBWORKER,
-				channelId:   dirWkChId,
-				borrower:     br.BorrowerUser,
-				borrowerName: br.BorrowerName,
-				keeperUsers: []string{"kpuser1", "kpuser2"},
-				keeperNames: []string{"kpname1", "kpname2"},
-				workflow:    []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
+				role:         LIBWORKER,
+				channelId:    dirWkChId,
+				borrower:     borrowUser,
+				borrowerName: "bookbor",
+                                worker:       realwk,
+                                workerName:   realwkName,
+				keeperUsers:  []string{"kpuser1", "kpuser2"},
+				keeperNames:  []string{"kpname1", "kpname2"},
+				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
 				tags: []string{
+					"#BORROWERUSER_EQ_" + borrowUser,
+					"#LIBWORKERUSER_EQ_" + realwk,
+					"#KEEPERUSER_EQ_" + "kpuser1",
+					"#KEEPERUSER_EQ_" + "kpuser2",
 					"#STATUS_EQ_REQUESTED",
-					"#BORROWERUSER_EQ_" + br.BorrowerUser,
-					"#LIBWORKERUSER_EQ_" + br.LibworkerUser,
-					"#KEEPERUSER_EQ_" + br.KeeperUsers[0],
-					"#KEEPERUSER_EQ_" + br.KeeperUsers[1],
 				},
 			},
 			{
-				role:        KEEPER,
-				channelId:   keeper1Id_botId,
+				role:         KEEPER,
+				channelId:    keeper1Id_botId,
 				borrower:     "",
 				borrowerName: "",
-				keeperUsers: []string{"kpuser1", "kpuser2"},
-				keeperNames: []string{"kpname1", "kpname2"},
-				workflow:    []string{STATUS_REQUESTED, STATUS_CONFIRMED},
+                                worker:       realwk,
+                                workerName:   realwkName,
+				keeperUsers:  []string{"kpuser1", "kpuser2"},
+				keeperNames:  []string{"kpname1", "kpname2"},
+				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED},
 				tags: []string{
+					"#LIBWORKERUSER_EQ_" + realwk,
+					"#KEEPERUSER_EQ_" + "kpuser1",
+					"#KEEPERUSER_EQ_" + "kpuser2",
 					"#STATUS_EQ_REQUESTED",
-					"#LIBWORKERUSER_EQ_" + br.LibworkerUser,
-					"#KEEPERUSER_EQ_" + br.KeeperUsers[0],
-					"#KEEPERUSER_EQ_" + br.KeeperUsers[1],
 				},
 			},
 			{
-				role:      KEEPER,
-				channelId: keeper2Id_botId,
+				role:         KEEPER,
+				channelId:    keeper2Id_botId,
 				borrower:     "",
 				borrowerName: "",
-				keeperUsers: []string{"kpuser1", "kpuser2"},
-				keeperNames: []string{"kpname1", "kpname2"},
-				workflow:    []string{STATUS_REQUESTED, STATUS_CONFIRMED},
+                                worker:       realwk,
+                                workerName:   realwkName,
+				keeperUsers:  []string{"kpuser1", "kpuser2"},
+				keeperNames:  []string{"kpname1", "kpname2"},
+				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED},
 				tags: []string{
+					"#LIBWORKERUSER_EQ_" + realwk,
+					"#KEEPERUSER_EQ_" + "kpuser1",
+					"#KEEPERUSER_EQ_" + "kpuser2",
 					"#STATUS_EQ_REQUESTED",
-					"#LIBWORKERUSER_EQ_" + br.LibworkerUser,
-					"#KEEPERUSER_EQ_" + br.KeeperUsers[0],
-					"#KEEPERUSER_EQ_" + br.KeeperUsers[1],
 				},
 			},
 		} {
+                        // fmt.Printf("******** %v\n", role.role)
+                        // fmt.Printf("******** %v\n", realbrPosts[role.channelId].Message)
+                        var thisRealBr Borrow
+                        _ = json.Unmarshal([]byte(realbrPosts[role.channelId].Message), &thisRealBr)
+                        // fmt.Printf("******* err: %v", err)
+                        // fmt.Printf("******* Unmarshaled: %v", thisRealBr)
+
+			br := &BorrowRequest{
+				BookPostId:    bookPostId,
+				BookId:        aBook.Id,
+				BookName:      aBook.Name,
+				Author:        aBook.Author,
+				BorrowerUser:  role.borrower,
+				BorrowerName:  role.borrowerName,
+				LibworkerUser: role.worker,
+				LibworkerName: role.workerName,
+				KeeperUsers:   role.keeperUsers,
+				KeeperNames:   role.keeperNames,
+				RequestDate:   thisRealBr.DataOrImage.RequestDate,
+				WorkflowType:  WORKFLOW_BORROW,
+				Worflow:       role.workflow,
+				Status:        STATUS_REQUESTED,
+				Tags:          role.tags,
+			}
 
 			// we have to distribute every library work to a borrow request
 			// because the distribution is random
@@ -414,12 +230,6 @@ func TestHandleBorrow(t *testing.T) {
 				Role:         []string{role.role},
 				RelationKeys: RelationKeys{},
 			}
-                        borrowExp.DataOrImage.BorrowerUser = role.borrower
-                        borrowExp.DataOrImage.BorrowerName = role.borrowerName
-                        borrowExp.DataOrImage.KeeperUsers = role.keeperUsers
-                        borrowExp.DataOrImage.KeeperNames = role.keeperNames
-                        borrowExp.DataOrImage.Worflow = role.workflow
-                        borrowExp.DataOrImage.Tags = role.tags
 
 			borrowExpJson, _ := json.MarshalIndent(borrowExp, "", "")
 
@@ -622,7 +432,7 @@ func TestHandleBorrow(t *testing.T) {
 		}
 	})
 
-	t.Run("duplicated_users_bor_worker", func(t *testing.T) {
+	t.Run("multi_roles", func(t *testing.T) {
 
 		for _, test := range []struct {
 			borrower      string

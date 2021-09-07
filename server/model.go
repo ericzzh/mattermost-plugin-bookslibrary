@@ -50,6 +50,12 @@ type BorrowRequestKey struct {
 	BorrowerUser string `json:"borrower_user"`
 }
 
+type WorkflowRequest struct {
+	MasterPostKey string `json:"master_key"`
+	ActUser       string `json:"act_user"`
+	MoveToStatus  string `json:"move_to_status"`
+}
+
 //The key role is library worker(libworker). it is the cross-point in the workflow
 //A library worker is a connected point bewteen a borrower and a keeper.
 //He/She should cooridinate the workflow.
