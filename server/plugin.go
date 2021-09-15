@@ -1,10 +1,10 @@
 package main
 
 import (
-	"sync"
-	"net/http"
-	"github.com/mattermost/mattermost-server/v5/plugin"
 	"github.com/mattermost/mattermost-server/v5/model"
+	"github.com/mattermost/mattermost-server/v5/plugin"
+	"net/http"
+	"sync"
 )
 
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.
@@ -32,8 +32,9 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 	switch r.URL.Path {
 	case "/borrow":
 		p.handleBorrowRequest(c, w, r)
+	case "/workflow":
+		p.handleWorkflowRequest(c, w, r)
 	default:
 		http.NotFound(w, r)
 	}
 }
-

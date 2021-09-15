@@ -35,7 +35,10 @@ const (
 	STATUS_REQUESTED = "REQUESTED"
 	STATUS_CONFIRMED = "CONFIRMED"
 	STATUS_DELIVIED  = "DELIVIED"
-	STATUS_RENEWED   = "RENEWED"
+	STATUS_RENEW_REQUESTED = "RENEW_REQUESTED"
+	STATUS_RENEW_CONFIRMED = "RENEW_CONFIRMED"
+        STATUS_RETURN_REQUESTED = "RETURN_REQUESTED"
+	STATUS_RETURN_CONFIRMED = "RETURN_CONFIRMED"
 	STATUS_RETURNED  = "RETURNED"
 )
 
@@ -51,9 +54,12 @@ type BorrowRequestKey struct {
 }
 
 type WorkflowRequest struct {
-	MasterPostKey string `json:"master_key"`
-	ActUser       string `json:"act_user"`
-	MoveToStatus  string `json:"move_to_status"`
+	MasterPostKey   string `json:"master_key"`
+	ActUser         string `json:"act_user"`
+	CurrentWorkflow string `json:"current_workflow"`
+	MoveToWorkflow  string `json:"move_to_workflow"`
+	CurrentStatus   string `json:"current_status"`
+	MoveToStatus    string `json:"move_to_status"`
 }
 
 //The key role is library worker(libworker). it is the cross-point in the workflow
@@ -65,25 +71,28 @@ type WorkflowRequest struct {
 //in a borrowing workflow. We use a simple random number(uniform distribution) solution to solve this case.
 //To be more flexible a book are degsined to be able to assgin multi-persons too.
 type BorrowRequest struct {
-	BookPostId    string   `json:"book_post_id"`
-	BookId        string   `json:"book_id"`
-	BookName      string   `json:"book_name"`
-	Author        string   `json:"author"`
-	BorrowerUser  string   `json:"borrower_user"`
-	BorrowerName  string   `json:"borrower_name"`
-	LibworkerUser string   `json:"libworker_user"`
-	LibworkerName string   `json:"libworker_name"`
-	KeeperUsers   []string `json:"keeper_users,omitempty"`
-	KeeperNames   []string `json:"keeper_names,omitempty"`
-	RequestDate   int64    `json:"request_date"`
-	ConfirmDate   int64    `json:"confirm_date"`
-	DeliveryDate  int64    `json:"delivery_date"`
-	RenewDate     int64    `json:"renew_date"`
-	ReturnDate    int64    `json:"return_date"`
-	WorkflowType  string   `json:"workflow_type"`
-	Worflow       []string `json:"workflow"`
-	Status        string   `json:"status"`
-	Tags          []string `json:"tags"`
+	BookPostId     string   `json:"book_post_id"`
+	BookId         string   `json:"book_id"`
+	BookName       string   `json:"book_name"`
+	Author         string   `json:"author"`
+	BorrowerUser   string   `json:"borrower_user"`
+	BorrowerName   string   `json:"borrower_name"`
+	LibworkerUser  string   `json:"libworker_user"`
+	LibworkerName  string   `json:"libworker_name"`
+	KeeperUsers    []string `json:"keeper_users,omitempty"`
+	KeeperNames    []string `json:"keeper_names,omitempty"`
+	RequestDate    int64    `json:"request_date"`
+	ConfirmDate    int64    `json:"confirm_date"`
+	DeliveryDate   int64    `json:"delivery_date"`
+	RenewReqDate   int64    `json:"renew_request_date"`
+	RenewConfDate  int64    `json:"renew_confirm_date"`
+	ReturnReqDate  int64    `json:"return_request_date"`
+	ReturnConfDate int64    `json:"return_confrrm_date"`
+	ReturnDelvDate int64    `json:"return_delivery_date"`
+	WorkflowType   string   `json:"workflow_type"`
+	Worflow        []string `json:"workflow"`
+	Status         string   `json:"status"`
+	Tags           []string `json:"tags"`
 }
 
 type Borrow struct {

@@ -251,7 +251,7 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 		bq.BookId = book.Id
 		bq.BookName = book.Name
 		bq.Author = book.Author
-		bq.RequestDate = time.Now().UnixNano() / int64(time.Millisecond)
+		bq.RequestDate = GetNowTime()
 	} else {
 
 		bq.BookPostId = masterBr.BookPostId
@@ -304,7 +304,7 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 
 	bq.WorkflowType = WORKFLOW_BORROW
 
-	p._setVisibleWorkflowByRoles(rolesSet, bq)
+	p._setVisibleWorkflowByRoles(bq.WorkflowType, rolesSet, bq)
 	p._setStatusByWorkflow(STATUS_REQUESTED, bq)
 
 	return bq, nil
@@ -370,11 +370,29 @@ func (p *Plugin) _distributeWorker(libworkers []string) string {
 //
 // }
 
+func (p *Plugin) _setDateIf(status string, br *BorrowRequest) int64 {
+	stepsSet := ConvertStringArrayToSet(br.Worflow)
+
+	if ConstainsInStringSet(stepsSet, []string{status}) {
+		return GetNowTime()
+	}
+
+	return 0
+}
 func (p *Plugin) _setStatusByWorkflow(status string, br *BorrowRequest) {
 	stepsSet := ConvertStringArrayToSet(br.Worflow)
 
 	if ConstainsInStringSet(stepsSet, []string{status}) {
 		br.Status = status
+		stag := "#STATUS_EQ_" + br.Status
+
+		for i, tag := range br.Tags {
+			if strings.HasPrefix(tag, "#STATUS_EQ_") {
+				br.Tags[i] = stag
+				return
+			}
+		}
+
 		br.Tags = append(br.Tags, []string{
 			"#STATUS_EQ_" + br.Status,
 		}...)
@@ -382,22 +400,34 @@ func (p *Plugin) _setStatusByWorkflow(status string, br *BorrowRequest) {
 
 }
 
-func (p *Plugin) _setVisibleWorkflowByRoles(rolesSet map[string]bool, br *BorrowRequest) {
-	switch br.WorkflowType {
+func (p *Plugin) _setVisibleWorkflowByRoles(wt string, rolesSet map[string]bool, br *BorrowRequest) {
+	// 1. workflow steps are variant
+	// 2. if not relevent, change nothning ( keep same as last workflow)
+	switch wt {
 	case WORKFLOW_BORROW:
+
+		// common
+		br.WorkflowType = WORKFLOW_BORROW
+		br.Worflow = []string{}
 		br.Worflow = append(br.Worflow, STATUS_REQUESTED)
 		br.Worflow = append(br.Worflow, STATUS_CONFIRMED)
 		if ConstainsInStringSet(rolesSet, []string{MASTER, BORROWER, LIBWORKER}) {
 			br.Worflow = append(br.Worflow, STATUS_DELIVIED)
 		}
 	case WORKFLOW_RENEW:
+		// keepers are not relevant, there is no common part
 		if ConstainsInStringSet(rolesSet, []string{MASTER, BORROWER, LIBWORKER}) {
-			br.Worflow = append(br.Worflow, STATUS_RENEWED)
-			br.Worflow = append(br.Worflow, STATUS_CONFIRMED)
+			br.Worflow = []string{}
+			br.WorkflowType = WORKFLOW_RENEW
+			br.Worflow = append(br.Worflow, STATUS_RENEW_REQUESTED)
+			br.Worflow = append(br.Worflow, STATUS_RENEW_CONFIRMED)
 		}
 	case WORKFLOW_RETURN:
-		br.Worflow = append(br.Worflow, STATUS_REQUESTED)
-		br.Worflow = append(br.Worflow, STATUS_CONFIRMED)
+		//common
+		br.Worflow = []string{}
+		br.WorkflowType = WORKFLOW_RETURN
+		br.Worflow = append(br.Worflow, STATUS_RETURN_REQUESTED)
+		br.Worflow = append(br.Worflow, STATUS_RETURN_CONFIRMED)
 		if ConstainsInStringSet(rolesSet, []string{MASTER, KEEPER, LIBWORKER}) {
 			br.Worflow = append(br.Worflow, STATUS_RETURNED)
 		}

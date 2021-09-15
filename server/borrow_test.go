@@ -82,7 +82,8 @@ func TestHandleBorrow(t *testing.T) {
 		plugin.SetAPI(api)
 
 		var realbr *Borrow
-                realbrPosts, realbrUpdPosts,createdPid := GenerateBorrowRequest(td, plugin, api)
+                getCurrentPosts := GenerateBorrowRequest(td, plugin, api)
+                realbrPosts, realbrUpdPosts,createdPid := getCurrentPosts() 
 
 		//------- Verfication -------
 		realbrMsg := realbrPosts[plugin.borrowChannel.Id].Message

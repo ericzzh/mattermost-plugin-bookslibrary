@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 
 	"github.com/mattermost/mattermost-server/v5/model"
@@ -11,33 +12,36 @@ import (
 	// "github.com/stretchr/testify/require"
 )
 
+var logSwitch bool
+
 type TestData struct {
-	ABook           *Book
-	BookPostId      string
-	BotId           string
-	BorChannelId    string
-	BorTeamId       string
-	ABookJson       []byte
-	BorrowUser      string
-	ReqKey          BorrowRequestKey
-	ReqKeyJson      []byte
-	BorId           string
-	Worker1Id       string
-	Worker2Id       string
-	Keeper1Id       string
-	Keeper2Id       string
-	BorId_botId     string
-	Worker1Id_botId string
-	Worker2Id_botId string
-	Keeper1Id_botId string
-	Keeper2Id_botId string
-	ApiMockCommon   func() *plugintest.API
-	NewMockPlugin   func() *Plugin
-        MatchPostByChannel   func(string) func(*model.Post) bool
-        MatchPostById   func(string) func(*model.Post) bool
+	ABook              *Book
+	BookPostId         string
+	BotId              string
+	BorChannelId       string
+	BorTeamId          string
+	ABookJson          []byte
+	BorrowUser         string
+	ReqKey             BorrowRequestKey
+	ReqKeyJson         []byte
+	BorId              string
+	Worker1Id          string
+	Worker2Id          string
+	Keeper1Id          string
+	Keeper2Id          string
+	BorId_botId        string
+	Worker1Id_botId    string
+	Worker2Id_botId    string
+	Keeper1Id_botId    string
+	Keeper2Id_botId    string
+	ApiMockCommon      func() *plugintest.API
+	NewMockPlugin      func() *Plugin
+	MatchPostByChannel func(string) func(*model.Post) bool
+	MatchPostById      func(string) func(*model.Post) bool
 }
 
 func NewTestData() TestData {
+	_ = fmt.Printf
 	td := TestData{}
 
 	td.BookPostId = model.NewId()
@@ -147,13 +151,37 @@ func NewTestData() TestData {
 		api.On("LogError",
 			mock.AnythingOfType("string"),
 			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string")).Return()
+			mock.AnythingOfType("string")).
+			Return().
+			Run(func(args mock.Arguments) {
+				if logSwitch {
+					fmt.Printf("LOG ERROR: %v, %v, %v\n",
+						args.String(0),
+						args.String(1),
+						args.String(2),
+					)
+				}
+			})
 		api.On("LogError",
 			mock.AnythingOfType("string"),
 			mock.AnythingOfType("string"),
 			mock.AnythingOfType("string"),
 			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string")).Return()
+			mock.AnythingOfType("string")).
+			Return().
+			Run(func(args mock.Arguments) {
+
+				if logSwitch {
+					fmt.Printf("LOG ERROR: %v, %v, %v, %v, %v\n",
+						args.String(0),
+						args.String(1),
+						args.String(2),
+						args.String(3),
+						args.String(4),
+					)
+				}
+			})
+
 		api.On("LogError",
 			mock.AnythingOfType("string"),
 			mock.AnythingOfType("string"),
@@ -161,7 +189,22 @@ func NewTestData() TestData {
 			mock.AnythingOfType("string"),
 			mock.AnythingOfType("string"),
 			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string")).Return()
+			mock.AnythingOfType("string")).
+			Return().
+			Run(func(args mock.Arguments) {
+				if logSwitch {
+					fmt.Printf("LOG ERROR: %v, %v, %v, %v, %v, %v, %v\n",
+						args.String(0),
+						args.String(1),
+						args.String(2),
+						args.String(3),
+						args.String(4),
+						args.String(5),
+						args.String(6),
+					)
+				}
+			})
+
 		api.On("LogError",
 			mock.AnythingOfType("string"),
 			mock.AnythingOfType("string"),
@@ -169,7 +212,21 @@ func NewTestData() TestData {
 			mock.AnythingOfType("string"),
 			mock.AnythingOfType("[]string"),
 			mock.AnythingOfType("string"),
-			mock.AnythingOfType("string")).Return()
+			mock.AnythingOfType("string")).
+			Return().
+			Run(func(args mock.Arguments) {
+				if logSwitch {
+					fmt.Printf("LOG ERROR: %v, %v, %v, %v, %v, %v, %v\n",
+						args.String(0),
+						args.String(1),
+						args.String(2),
+						args.String(3),
+						args.Get(4).([]string),
+						args.String(5),
+						args.String(6),
+					)
+				}
+			})
 		api.On("DeletePost", mock.AnythingOfType("string")).Return(nil)
 
 		return api
@@ -190,19 +247,29 @@ func NewTestData() TestData {
 
 	td.MatchPostByChannel = func(channelId string) func(*model.Post) bool {
 		return func(post *model.Post) bool {
-			return post.ChannelId == channelId
+			return post.ChannelId == channelId && post.RootId == ""
 		}
 	}
 
 	td.MatchPostById = func(PostId string) func(*model.Post) bool {
 		return func(post *model.Post) bool {
-			return post.Id == PostId
+			return post.Id == PostId && post.RootId == ""
 		}
 	}
 	return td
 }
 
-func GenerateBorrowRequest(td TestData, plugin *Plugin, api *plugintest.API) (map[string]*model.Post,map[string]*model.Post,map[string]string) {
+type InjectOptions struct {
+	updatePost func()
+}
+
+func GenerateBorrowRequest(td TestData, plugin *Plugin, api *plugintest.API, injects ...InjectOptions) func() (
+	map[string]*model.Post, map[string]*model.Post, map[string]string) {
+
+	var injectOpt InjectOptions
+	if injects != nil {
+		injectOpt = injects[0]
+	}
 
 	realbrPosts := map[string]*model.Post{}
 	realbrUpdPosts := map[string]*model.Post{}
@@ -215,6 +282,7 @@ func GenerateBorrowRequest(td TestData, plugin *Plugin, api *plugintest.API) (ma
 
 	runfnUpd := func(args mock.Arguments) {
 		realbrPost := args.Get(0).(*model.Post)
+		// fmt.Printf("****IN RunfnUpd %v\n", realbrPost)
 		realbrUpdPosts[realbrPost.ChannelId] = realbrPost
 	}
 
@@ -270,6 +338,10 @@ func GenerateBorrowRequest(td TestData, plugin *Plugin, api *plugintest.API) (ma
 			Type:      "custom_borrow_type",
 		}, nil)
 
+	if injectOpt.updatePost != nil {
+		injectOpt.updatePost()
+	}
+
 	api.On("UpdatePost", mock.MatchedBy(matchPost(plugin.borrowChannel.Id))).Run(runfnUpd).
 		Return(&model.Post{Id: createdPid[plugin.borrowChannel.Id]}, nil)
 	api.On("UpdatePost", mock.MatchedBy(matchPost(td.BorId_botId))).Run(runfnUpd).
@@ -287,6 +359,10 @@ func GenerateBorrowRequest(td TestData, plugin *Plugin, api *plugintest.API) (ma
 	r := httptest.NewRequest("POST", "/borrow", bytes.NewReader(td.ReqKeyJson))
 	plugin.ServeHTTP(nil, w, r)
 
+	return func() (map[string]*model.Post, map[string]*model.Post, map[string]string) {
 
-        return realbrPosts,realbrUpdPosts,createdPid
+		return realbrPosts, realbrUpdPosts, createdPid
+
+	}
+
 }
