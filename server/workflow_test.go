@@ -29,14 +29,14 @@ type workflowEnv struct {
 	worker_botId      string
 	postById          map[string]*model.Post
 	realNotifyThreads map[string]*model.Post
-	getCurrentPosts   func() (
-		map[string]*model.Post, map[string]*model.Post, map[string]string)
-	updErrCtrl map[string]bool
+	getCurrentPosts   func() ReturnedInfo
+	updErrCtrl        map[string]bool
 }
 
 type injectOpt struct {
-	onGetPost    func()
-	ifUpdErrCtrl bool
+	onGetPost     func()
+	ifUpdErrCtrl  bool
+	onSearchPosts func(api *plugintest.API, plugin *Plugin, td *TestData) func()
 }
 
 func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
@@ -88,11 +88,25 @@ func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
 			}
 		}
 	}
+
+	if inject.onSearchPosts != nil {
+		injectOpt.searchPosts = inject.onSearchPosts(env.api, env.plugin, &td)
+	}
+
 	env.getCurrentPosts = GenerateBorrowRequest(env.td, env.plugin, env.api, injectOpt)
 	if env.realbrUpdPosts != nil {
-		env.realbrPosts, _, env.createdPid = env.getCurrentPosts()
+		returnedInfo := env.getCurrentPosts()
+		env.realbrPosts = returnedInfo.RealbrPost
+		env.createdPid = returnedInfo.CreatedPid
 	} else {
-		env.realbrPosts, env.realbrUpdPosts, env.createdPid = env.getCurrentPosts()
+		returnedInfo := env.getCurrentPosts()
+		env.realbrUpdPosts = returnedInfo.RealbrUpdPosts
+		env.realbrPosts = returnedInfo.RealbrPost
+env.createdPid = returnedInfo.CreatedPid
+	}
+
+	if len(env.realbrPosts) == 0 {
+		return &env
 	}
 
 	var master Borrow
@@ -160,20 +174,22 @@ func TestHandleWorkflow(t *testing.T) {
 	worker := env.worker
 	worker_botId := env.worker_botId
 	postById := env.postById
+
+	type testResult struct {
+		role    string
+		chid    string
+		notifiy bool
+		brq     BorrowRequest
+	}
+
+	type testData struct {
+		wfr    WorkflowRequest
+		result []testResult
+	}
+
 	t.Run("normal_borrow_workflow", func(t *testing.T) {
 
-		type testResult struct {
-			role    string
-			chid    string
-			notifiy bool
-			brq     BorrowRequest
-		}
-		type testData struct {
-			wfr    WorkflowRequest
-			result []testResult
-		}
-
-		for _, step := range []testData{
+		testWorkflow := []testData{
 			{
 				WorkflowRequest{
 					MasterPostKey:   createdPid[td.BorChannelId],
@@ -192,7 +208,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ConfirmDate:  1,
 							WorkflowType: WORKFLOW_BORROW,
 							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
+							LastStatus:   STATUS_REQUESTED,
 							Status:       STATUS_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_BORROW,
+									NextStatus:       STATUS_DELIVIED,
+								},
+							},
+							ActUsers: []string{td.BorrowUser},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -210,7 +234,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ConfirmDate:  1,
 							WorkflowType: WORKFLOW_BORROW,
 							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
+							LastStatus:   STATUS_REQUESTED,
 							Status:       STATUS_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_BORROW,
+									NextStatus:       STATUS_DELIVIED,
+								},
+							},
+							ActUsers: []string{td.BorrowUser},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -226,7 +258,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ConfirmDate:  1,
 							WorkflowType: WORKFLOW_BORROW,
 							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
+							LastStatus:   STATUS_REQUESTED,
 							Status:       STATUS_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_BORROW,
+									NextStatus:       STATUS_DELIVIED,
+								},
+							},
+							ActUsers: []string{td.BorrowUser},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -244,7 +284,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ConfirmDate:  1,
 							WorkflowType: WORKFLOW_BORROW,
 							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
+							LastStatus:   STATUS_REQUESTED,
 							Status:       STATUS_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_REQUESTED,
+								},
+							},
+							ActUsers: []string{},
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -261,7 +309,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ConfirmDate:  1,
 							WorkflowType: WORKFLOW_BORROW,
 							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
+							LastStatus:   STATUS_REQUESTED,
 							Status:       STATUS_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_REQUESTED,
+								},
+							},
+							ActUsers: []string{},
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -290,7 +346,19 @@ func TestHandleWorkflow(t *testing.T) {
 							DeliveryDate: 1,
 							WorkflowType: WORKFLOW_BORROW,
 							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
+							LastStatus:   STATUS_CONFIRMED,
 							Status:       STATUS_DELIVIED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RENEW,
+									NextStatus:       STATUS_RENEW_REQUESTED,
+								},
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_REQUESTED,
+								},
+							},
+							ActUsers: []string{td.BorrowUser},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -308,7 +376,19 @@ func TestHandleWorkflow(t *testing.T) {
 							DeliveryDate: 1,
 							WorkflowType: WORKFLOW_BORROW,
 							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
+							LastStatus:   STATUS_CONFIRMED,
 							Status:       STATUS_DELIVIED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RENEW,
+									NextStatus:       STATUS_RENEW_REQUESTED,
+								},
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_REQUESTED,
+								},
+							},
+							ActUsers: []string{td.BorrowUser},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -324,7 +404,19 @@ func TestHandleWorkflow(t *testing.T) {
 							DeliveryDate: 1,
 							WorkflowType: WORKFLOW_BORROW,
 							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
+							LastStatus:   STATUS_CONFIRMED,
 							Status:       STATUS_DELIVIED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RENEW,
+									NextStatus:       STATUS_RENEW_REQUESTED,
+								},
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_REQUESTED,
+								},
+							},
+							ActUsers: []string{td.BorrowUser},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -340,7 +432,15 @@ func TestHandleWorkflow(t *testing.T) {
 						brq: BorrowRequest{
 							WorkflowType: WORKFLOW_BORROW,
 							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
+							LastStatus:   STATUS_REQUESTED,
 							Status:       STATUS_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_REQUESTED,
+								},
+							},
+							ActUsers: []string{},
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -355,7 +455,15 @@ func TestHandleWorkflow(t *testing.T) {
 						brq: BorrowRequest{
 							WorkflowType: WORKFLOW_BORROW,
 							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
+							LastStatus:   STATUS_REQUESTED,
 							Status:       STATUS_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_REQUESTED,
+								},
+							},
+							ActUsers: []string{},
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -383,7 +491,15 @@ func TestHandleWorkflow(t *testing.T) {
 							RenewReqDate: 1,
 							WorkflowType: WORKFLOW_RENEW,
 							Worflow:      []string{STATUS_RENEW_REQUESTED, STATUS_RENEW_CONFIRMED},
+							LastStatus:   STATUS_DELIVIED,
 							Status:       STATUS_RENEW_REQUESTED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RENEW,
+									NextStatus:       STATUS_RENEW_CONFIRMED,
+								},
+							},
+							ActUsers: []string{worker},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -401,7 +517,15 @@ func TestHandleWorkflow(t *testing.T) {
 							RenewReqDate: 1,
 							WorkflowType: WORKFLOW_RENEW,
 							Worflow:      []string{STATUS_RENEW_REQUESTED, STATUS_RENEW_CONFIRMED},
+							LastStatus:   STATUS_DELIVIED,
 							Status:       STATUS_RENEW_REQUESTED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RENEW,
+									NextStatus:       STATUS_RENEW_CONFIRMED,
+								},
+							},
+							ActUsers: []string{worker},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -417,7 +541,15 @@ func TestHandleWorkflow(t *testing.T) {
 							RenewReqDate: 1,
 							WorkflowType: WORKFLOW_RENEW,
 							Worflow:      []string{STATUS_RENEW_REQUESTED, STATUS_RENEW_CONFIRMED},
+							LastStatus:   STATUS_DELIVIED,
 							Status:       STATUS_RENEW_REQUESTED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RENEW,
+									NextStatus:       STATUS_RENEW_CONFIRMED,
+								},
+							},
+							ActUsers: []string{worker},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -433,7 +565,15 @@ func TestHandleWorkflow(t *testing.T) {
 						brq: BorrowRequest{
 							WorkflowType: WORKFLOW_BORROW,
 							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
+							LastStatus:   STATUS_REQUESTED,
 							Status:       STATUS_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_REQUESTED,
+								},
+							},
+							ActUsers: []string{},
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -448,7 +588,15 @@ func TestHandleWorkflow(t *testing.T) {
 						brq: BorrowRequest{
 							WorkflowType: WORKFLOW_BORROW,
 							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
+							LastStatus:   STATUS_REQUESTED,
 							Status:       STATUS_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_REQUESTED,
+								},
+							},
+							ActUsers: []string{},
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -476,7 +624,15 @@ func TestHandleWorkflow(t *testing.T) {
 							RenewConfDate: 1,
 							WorkflowType:  WORKFLOW_RENEW,
 							Worflow:       []string{STATUS_RENEW_REQUESTED, STATUS_RENEW_CONFIRMED},
+							LastStatus:    STATUS_RENEW_REQUESTED,
 							Status:        STATUS_RENEW_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_REQUESTED,
+								},
+							},
+							ActUsers: []string{td.BorrowUser},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -494,7 +650,15 @@ func TestHandleWorkflow(t *testing.T) {
 							RenewConfDate: 1,
 							WorkflowType:  WORKFLOW_RENEW,
 							Worflow:       []string{STATUS_RENEW_REQUESTED, STATUS_RENEW_CONFIRMED},
+							LastStatus:    STATUS_RENEW_REQUESTED,
 							Status:        STATUS_RENEW_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_REQUESTED,
+								},
+							},
+							ActUsers: []string{td.BorrowUser},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -510,7 +674,15 @@ func TestHandleWorkflow(t *testing.T) {
 							RenewConfDate: 1,
 							WorkflowType:  WORKFLOW_RENEW,
 							Worflow:       []string{STATUS_RENEW_REQUESTED, STATUS_RENEW_CONFIRMED},
+							LastStatus:    STATUS_RENEW_REQUESTED,
 							Status:        STATUS_RENEW_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_REQUESTED,
+								},
+							},
+							ActUsers: []string{td.BorrowUser},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -526,7 +698,15 @@ func TestHandleWorkflow(t *testing.T) {
 						brq: BorrowRequest{
 							WorkflowType: WORKFLOW_BORROW,
 							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
+							LastStatus:   STATUS_REQUESTED,
 							Status:       STATUS_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_REQUESTED,
+								},
+							},
+							ActUsers: []string{},
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -541,7 +721,15 @@ func TestHandleWorkflow(t *testing.T) {
 						brq: BorrowRequest{
 							WorkflowType: WORKFLOW_BORROW,
 							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
+							LastStatus:   STATUS_REQUESTED,
 							Status:       STATUS_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_REQUESTED,
+								},
+							},
+							ActUsers: []string{},
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -569,7 +757,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ReturnReqDate: 1,
 							WorkflowType:  WORKFLOW_RETURN,
 							Worflow:       []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
+							LastStatus:    STATUS_RENEW_CONFIRMED,
 							Status:        STATUS_RETURN_REQUESTED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_CONFIRMED,
+								},
+							},
+							ActUsers: []string{worker},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -587,7 +783,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ReturnReqDate: 1,
 							WorkflowType:  WORKFLOW_RETURN,
 							Worflow:       []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED},
+							LastStatus:    STATUS_RENEW_CONFIRMED,
 							Status:        STATUS_RETURN_REQUESTED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_CONFIRMED,
+								},
+							},
+							ActUsers: []string{worker},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -603,7 +807,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ReturnReqDate: 1,
 							WorkflowType:  WORKFLOW_RETURN,
 							Worflow:       []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
+							LastStatus:    STATUS_RENEW_CONFIRMED,
 							Status:        STATUS_RETURN_REQUESTED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_CONFIRMED,
+								},
+							},
+							ActUsers: []string{worker},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -621,7 +833,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ReturnReqDate: 1,
 							WorkflowType:  WORKFLOW_RETURN,
 							Worflow:       []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
+							LastStatus:    STATUS_CONFIRMED,
 							Status:        STATUS_RETURN_REQUESTED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_CONFIRMED,
+								},
+							},
+							ActUsers: []string{worker},
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -638,7 +858,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ReturnReqDate: 1,
 							WorkflowType:  WORKFLOW_RETURN,
 							Worflow:       []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
+							LastStatus:    STATUS_CONFIRMED,
 							Status:        STATUS_RETURN_REQUESTED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURN_CONFIRMED,
+								},
+							},
+							ActUsers: []string{worker},
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -666,7 +894,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ReturnConfDate: 1,
 							WorkflowType:   WORKFLOW_RETURN,
 							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
+							LastStatus:     STATUS_RETURN_REQUESTED,
 							Status:         STATUS_RETURN_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURNED,
+								},
+							},
+							ActUsers: td.ABook.KeeperUsers,
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -684,7 +920,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ReturnConfDate: 1,
 							WorkflowType:   WORKFLOW_RETURN,
 							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED},
+							LastStatus:     STATUS_RETURN_REQUESTED,
 							Status:         STATUS_RETURN_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURNED,
+								},
+							},
+							ActUsers: []string{},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -700,7 +944,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ReturnConfDate: 1,
 							WorkflowType:   WORKFLOW_RETURN,
 							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
+							LastStatus:     STATUS_RETURN_REQUESTED,
 							Status:         STATUS_RETURN_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURNED,
+								},
+							},
+							ActUsers: td.ABook.KeeperUsers,
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -718,7 +970,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ReturnConfDate: 1,
 							WorkflowType:   WORKFLOW_RETURN,
 							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
+							LastStatus:     STATUS_RETURN_REQUESTED,
 							Status:         STATUS_RETURN_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURNED,
+								},
+							},
+							ActUsers: td.ABook.KeeperUsers,
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -735,7 +995,15 @@ func TestHandleWorkflow(t *testing.T) {
 							ReturnConfDate: 1,
 							WorkflowType:   WORKFLOW_RETURN,
 							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
+							LastStatus:     STATUS_RETURN_REQUESTED,
 							Status:         STATUS_RETURN_CONFIRMED,
+							Next: []Next{
+								{
+									NextWorkFlowType: WORKFLOW_RETURN,
+									NextStatus:       STATUS_RETURNED,
+								},
+							},
+							ActUsers: td.ABook.KeeperUsers,
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -763,7 +1031,10 @@ func TestHandleWorkflow(t *testing.T) {
 							ReturnDelvDate: 1,
 							WorkflowType:   WORKFLOW_RETURN,
 							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
+							LastStatus:     STATUS_RETURN_CONFIRMED,
 							Status:         STATUS_RETURNED,
+							Next:           []Next{},
+							ActUsers:        []string{},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -779,7 +1050,10 @@ func TestHandleWorkflow(t *testing.T) {
 						brq: BorrowRequest{
 							WorkflowType: WORKFLOW_RETURN,
 							Worflow:      []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED},
+							LastStatus:   STATUS_RETURN_REQUESTED,
 							Status:       STATUS_RETURN_CONFIRMED,
+							Next:         []Next{},
+							ActUsers:      []string{},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -795,7 +1069,10 @@ func TestHandleWorkflow(t *testing.T) {
 							ReturnDelvDate: 1,
 							WorkflowType:   WORKFLOW_RETURN,
 							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
+							LastStatus:     STATUS_RETURN_CONFIRMED,
 							Status:         STATUS_RETURNED,
+							Next:           []Next{},
+							ActUsers:        []string{},
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -813,7 +1090,10 @@ func TestHandleWorkflow(t *testing.T) {
 							ReturnDelvDate: 1,
 							WorkflowType:   WORKFLOW_RETURN,
 							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
+							LastStatus:     STATUS_RETURN_CONFIRMED,
 							Status:         STATUS_RETURNED,
+							Next:           []Next{},
+							ActUsers:        []string{},
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -830,7 +1110,10 @@ func TestHandleWorkflow(t *testing.T) {
 							ReturnDelvDate: 1,
 							WorkflowType:   WORKFLOW_RETURN,
 							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
+							LastStatus:     STATUS_RETURN_CONFIRMED,
 							Status:         STATUS_RETURNED,
+							Next:           []Next{},
+							ActUsers:        []string{},
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -841,7 +1124,9 @@ func TestHandleWorkflow(t *testing.T) {
 					},
 				},
 			},
-		} {
+		}
+
+		for _, step := range testWorkflow {
 			env.realNotifyThreads = map[string]*model.Post{}
 
 			for _, channelId := range []string{
@@ -870,8 +1155,8 @@ func TestHandleWorkflow(t *testing.T) {
 
 			// Unnecessary to get again, because map is passed by reference-like,
 			// but this work makes it easy to understand
-			_, newPosts, _ := getCurrentPosts()
-
+			returnedInfo := getCurrentPosts()
+			newPosts := returnedInfo.RealbrUpdPosts
 			for index, test := range step.result {
 				oldPost := oldPosts[test.chid]
 				var oldBorrow Borrow
@@ -889,9 +1174,21 @@ func TestHandleWorkflow(t *testing.T) {
 					"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. workflow should be %v",
 					index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, test.brq.Worflow)
 
+				assert.Equalf(t, test.brq.LastStatus, newBorrow.DataOrImage.LastStatus,
+					"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. last status should be %v",
+					index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, test.brq.LastStatus)
+
 				assert.Equalf(t, test.brq.Status, newBorrow.DataOrImage.Status,
 					"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. status should be %v",
 					index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, test.brq.Status)
+
+				assert.Equalf(t, test.brq.Next, newBorrow.DataOrImage.Next,
+					"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. next should be %v",
+					index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, test.brq.Next)
+
+				assert.Equalf(t, test.brq.ActUsers, newBorrow.DataOrImage.ActUsers,
+					"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. act user should be %v",
+					index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, test.brq.ActUsers)
 
 				assert.Equalf(t, test.brq.Tags, newBorrow.DataOrImage.Tags,
 					"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. tags should be %v",
@@ -980,8 +1277,14 @@ func TestHandleWorkflow(t *testing.T) {
 				newBorrow.DataOrImage.WorkflowType = ""
 				oldBorrow.DataOrImage.Worflow = []string{}
 				newBorrow.DataOrImage.Worflow = []string{}
+				oldBorrow.DataOrImage.LastStatus = ""
+				newBorrow.DataOrImage.LastStatus = ""
 				oldBorrow.DataOrImage.Status = ""
 				newBorrow.DataOrImage.Status = ""
+				oldBorrow.DataOrImage.Next = nil
+				newBorrow.DataOrImage.Next = nil
+				oldBorrow.DataOrImage.ActUsers = nil
+				newBorrow.DataOrImage.ActUsers = nil
 				oldBorrow.DataOrImage.Tags = nil
 				newBorrow.DataOrImage.Tags = nil
 
@@ -1190,5 +1493,120 @@ func TestRollback(t *testing.T) {
 		}
 
 	}
+
+}
+
+func TestBorrowRestrict(t *testing.T) {
+	logSwitch = false
+	_ = fmt.Println
+
+	t.Run("OK_no_requests", func(t *testing.T) {
+		env := newWorkflowEnv()
+		returned := env.getCurrentPosts()
+		resTest := returned.HttpResponse.Result()
+		var res Result
+		json.NewDecoder(resTest.Body).Decode(&res)
+		assert.Equalf(t, "", res.Error, "should be no error")
+	})
+
+	t.Run("OK_mixed_with_safe_status", func(t *testing.T) {
+		env := newWorkflowEnv(injectOpt{
+			onSearchPosts: func(api *plugintest.API, plugin *Plugin, td *TestData) func() {
+
+				safes := []string{
+					STATUS_RETURN_CONFIRMED,
+					STATUS_RETURNED,
+				}
+
+				searched := []*model.Post{}
+				for i := 1; i <= plugin.borrowTimes-len(safes)-1; i++ {
+					br := Borrow{
+						DataOrImage: &BorrowRequest{
+							BorrowerUser: td.BorrowUser,
+							Status:       STATUS_REQUESTED,
+						},
+					}
+					brj, _ := json.Marshal(br)
+					p := &model.Post{
+						Message: string(brj),
+					}
+					searched = append(searched, p)
+				}
+
+				for _, safe := range safes {
+					br := Borrow{
+						DataOrImage: &BorrowRequest{
+							BorrowerUser: td.BorrowUser,
+							Status:       safe,
+						},
+					}
+					brj, _ := json.Marshal(br)
+					p := &model.Post{
+						Message: string(brj),
+					}
+					searched = append(searched, p)
+				}
+
+				return func() {
+					api.On("SearchPostsInTeam", plugin.team.Id, []*model.SearchParams{
+						{
+							Terms:     "BORROWER_EQ_" + td.BorrowUser,
+							IsHashtag: true,
+							InChannels: []string{
+								plugin.borrowChannel.Id,
+							},
+						},
+					}).Return(searched, nil)
+				}
+			},
+		},
+		)
+		returned := env.getCurrentPosts()
+		resTest := returned.HttpResponse.Result()
+		var res Result
+		json.NewDecoder(resTest.Body).Decode(&res)
+		assert.Equalf(t, "", res.Error, "should be no error")
+	})
+
+	t.Run("error_borrow_limited", func(t *testing.T) {
+
+		env := newWorkflowEnv(injectOpt{
+			onSearchPosts: func(api *plugintest.API, plugin *Plugin, td *TestData) func() {
+
+				searched := []*model.Post{}
+				for i := 1; i <= plugin.borrowTimes; i++ {
+					br := Borrow{
+						DataOrImage: &BorrowRequest{
+							BorrowerUser: td.BorrowUser,
+							Status:       STATUS_REQUESTED,
+						},
+					}
+					brj, _ := json.Marshal(br)
+					p := &model.Post{
+						Message: string(brj),
+					}
+					searched = append(searched, p)
+				}
+
+				return func() {
+					api.On("SearchPostsInTeam", plugin.team.Id, []*model.SearchParams{
+						{
+							Terms:     "BORROWER_EQ_" + td.BorrowUser,
+							IsHashtag: true,
+							InChannels: []string{
+								plugin.borrowChannel.Id,
+							},
+						},
+					}).Return(searched, nil)
+				}
+			},
+		},
+		)
+		returned := env.getCurrentPosts()
+		resTest := returned.HttpResponse.Result()
+		var res Result
+		json.NewDecoder(resTest.Body).Decode(&res)
+		assert.Equalf(t, "borrowing-book-limited", res.Error, "should be error")
+	})
 
 }

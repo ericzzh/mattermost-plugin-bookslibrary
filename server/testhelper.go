@@ -242,6 +242,7 @@ func NewTestData() TestData {
 			team: &model.Team{
 				Id: td.BorTeamId,
 			},
+                        borrowTimes:2,
 		}
 	}
 
@@ -260,11 +261,18 @@ func NewTestData() TestData {
 }
 
 type InjectOptions struct {
-	updatePost func()
+	updatePost  func()
+	searchPosts func()
 }
 
-func GenerateBorrowRequest(td TestData, plugin *Plugin, api *plugintest.API, injects ...InjectOptions) func() (
-	map[string]*model.Post, map[string]*model.Post, map[string]string) {
+type ReturnedInfo struct {
+	RealbrPost     map[string]*model.Post
+	RealbrUpdPosts map[string]*model.Post
+	CreatedPid     map[string]string
+	HttpResponse   *httptest.ResponseRecorder
+}
+
+func GenerateBorrowRequest(td TestData, plugin *Plugin, api *plugintest.API, injects ...InjectOptions) func() ReturnedInfo {
 
 	var injectOpt InjectOptions
 	if injects != nil {
@@ -355,13 +363,26 @@ func GenerateBorrowRequest(td TestData, plugin *Plugin, api *plugintest.API, inj
 	api.On("UpdatePost", mock.MatchedBy(matchPost(td.Keeper2Id_botId))).Run(runfnUpd).
 		Return(&model.Post{Id: createdPid[td.Keeper2Id_botId]}, nil)
 
+	if injectOpt.searchPosts != nil {
+		injectOpt.searchPosts()
+	} else {
+		api.On("SearchPostsInTeam", plugin.team.Id, mock.AnythingOfType("[]*model.SearchParams")).
+			Return([]*model.Post{}, nil)
+
+	}
+
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("POST", "/borrow", bytes.NewReader(td.ReqKeyJson))
 	plugin.ServeHTTP(nil, w, r)
 
-	return func() (map[string]*model.Post, map[string]*model.Post, map[string]string) {
+	return func() ReturnedInfo {
 
-		return realbrPosts, realbrUpdPosts, createdPid
+		return ReturnedInfo{
+			RealbrPost:     realbrPosts,
+			RealbrUpdPosts: realbrUpdPosts,
+			CreatedPid:     createdPid,
+			HttpResponse:   w,
+		}
 
 	}
 

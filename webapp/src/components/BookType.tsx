@@ -26,6 +26,7 @@ import Button from "@material-ui/core/Button";
 import ButtonGroup from "@material-ui/core/ButtonGroup";
 import useMediaQuery from "@material-ui/core/useMediaQuery";
 import { useTheme } from "@material-ui/core/styles";
+// import { IntlProvider, FormattedMessage, FormattedNumber } from "react-intl";
 
 interface Book {
     post_id: string;
@@ -52,10 +53,10 @@ interface Book {
     tags: string[];
 }
 
-interface BorrowRequestKey{
+interface BorrowRequestKey {
     book_post_id: string;
     borrower_user: string;
-  }
+}
 
 const { formatText, messageHtmlToComponent } = window.PostUtils;
 
@@ -191,10 +192,10 @@ function BookType(props: any) {
 
     // It's enough to just send back a post id.
     const handleBorrow = async () => {
-        const request: BorrowRequestKey ={
-              book_post_id: props.post.id,
-              borrower_user: currentUser.username,
-          }
+        const request: BorrowRequestKey = {
+            book_post_id: props.post.id,
+            borrower_user: currentUser.username,
+        };
         const data = await Client4.doFetch<{ error: string }>(
             `/plugins/${manifest.id}/borrow`,
             {
@@ -407,14 +408,15 @@ function BookType(props: any) {
             </Grid>
         </Grid>
     );
-
     return (
+        // <IntlProvider locale="en" defaultLocale="en">
         <Paper className={classes.bookc_paper}>
             <Grid container direction={"column"}>
                 <Grid item>{main}</Grid>
                 <Grid item>{buttons}</Grid>
             </Grid>
         </Paper>
+        // </IntlProvider>
     );
 }
 

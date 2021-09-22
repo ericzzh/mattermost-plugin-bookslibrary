@@ -29,6 +29,26 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 
 	}
 
+	if err := p._checkConditions(borrowRequestKey); err != nil {
+
+		var resp []byte
+
+		switch {
+		case errors.Is(err, ErrBorrowingLimited):
+			resp, _ = json.Marshal(Result{
+				Error: err.Error(),
+			})
+		default:
+			p.API.LogError("Failed to call check conditons.", "err", fmt.Sprintf("%+v", err))
+			resp, _ = json.Marshal(Result{
+				Error: "Failed to call check conditons",
+			})
+		}
+
+		w.Write(resp)
+		return
+	}
+
 	//make borrow request from key
 	borrowRequestMaster, err := p._makeBorrowRequest(borrowRequestKey, borrowRequestKey.BorrowerUser, []string{MASTER}, nil)
 	if err != nil {
@@ -307,6 +327,17 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 	p._setVisibleWorkflowByRoles(bq.WorkflowType, rolesSet, bq)
 	p._setStatusByWorkflow(STATUS_REQUESTED, bq)
 
+        bq.Next = []Next{
+            {
+               NextWorkFlowType: WORKFLOW_BORROW,
+               NextStatus: STATUS_CONFIRMED,
+            },
+        }
+
+        bq.ActUsers = []string{
+               bq.LibworkerUser,
+        }
+
 	return bq, nil
 }
 
@@ -383,6 +414,7 @@ func (p *Plugin) _setStatusByWorkflow(status string, br *BorrowRequest) {
 	stepsSet := ConvertStringArrayToSet(br.Worflow)
 
 	if ConstainsInStringSet(stepsSet, []string{status}) {
+		br.LastStatus = br.Status
 		br.Status = status
 		stag := "#STATUS_EQ_" + br.Status
 
@@ -433,4 +465,47 @@ func (p *Plugin) _setVisibleWorkflowByRoles(wt string, rolesSet map[string]bool,
 		}
 	}
 
+}
+
+func (p *Plugin) _checkConditions(brk *BorrowRequestKey) error {
+
+	posts, err := p.API.SearchPostsInTeam(p.team.Id, []*model.SearchParams{
+		{
+			Terms:     "BORROWER_EQ_" + brk.BorrowerUser,
+			IsHashtag: true,
+			InChannels: []string{
+				p.borrowChannel.Id,
+			},
+		},
+	})
+
+	if err != nil {
+		errors.Wrapf(err, "search posts error.")
+	}
+
+	count := 0
+
+	for _, post := range posts {
+		var br Borrow
+		json.Unmarshal([]byte(post.Message), &br)
+
+		//even not very possible, this makes the result safe
+		if br.DataOrImage.BorrowerUser != brk.BorrowerUser {
+			continue
+		}
+
+		switch {
+		case br.DataOrImage.Status == STATUS_RETURN_CONFIRMED ||
+			br.DataOrImage.Status == STATUS_RETURNED:
+		default:
+			count++
+		}
+
+	}
+
+	if count >= p.borrowTimes {
+		return ErrBorrowingLimited
+	}
+
+	return nil
 }

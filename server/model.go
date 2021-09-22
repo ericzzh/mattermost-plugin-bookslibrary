@@ -1,5 +1,7 @@
 package main
 
+import "github.com/pkg/errors"
+
 type Book struct {
 	Id                string   `json:"id"`
 	Name              string   `json:"name"`
@@ -32,14 +34,14 @@ const (
 )
 
 const (
-	STATUS_REQUESTED = "REQUESTED"
-	STATUS_CONFIRMED = "CONFIRMED"
-	STATUS_DELIVIED  = "DELIVIED"
-	STATUS_RENEW_REQUESTED = "RENEW_REQUESTED"
-	STATUS_RENEW_CONFIRMED = "RENEW_CONFIRMED"
-        STATUS_RETURN_REQUESTED = "RETURN_REQUESTED"
+	STATUS_REQUESTED        = "REQUESTED"
+	STATUS_CONFIRMED        = "CONFIRMED"
+	STATUS_DELIVIED         = "DELIVIED"
+	STATUS_RENEW_REQUESTED  = "RENEW_REQUESTED"
+	STATUS_RENEW_CONFIRMED  = "RENEW_CONFIRMED"
+	STATUS_RETURN_REQUESTED = "RETURN_REQUESTED"
 	STATUS_RETURN_CONFIRMED = "RETURN_CONFIRMED"
-	STATUS_RETURNED  = "RETURNED"
+	STATUS_RETURNED         = "RETURNED"
 )
 
 const (
@@ -91,8 +93,16 @@ type BorrowRequest struct {
 	ReturnDelvDate int64    `json:"return_delivery_date"`
 	WorkflowType   string   `json:"workflow_type"`
 	Worflow        []string `json:"workflow"`
+	LastStatus     string   `json:"last_status"`
 	Status         string   `json:"status"`
+	Next           []Next   `json:"next,omitempty"`
+	ActUsers        []string `json:"act_user,omitempty"`
 	Tags           []string `json:"tags"`
+}
+
+type Next struct {
+	NextWorkFlowType string
+	NextStatus       string
 }
 
 type Borrow struct {
@@ -112,3 +122,7 @@ type RelationKeys struct {
 type Result struct {
 	Error string `json:"error"`
 }
+
+var (
+	ErrBorrowingLimited = errors.New("borrowing-book-limited")
+)

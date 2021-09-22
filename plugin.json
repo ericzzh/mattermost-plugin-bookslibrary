@@ -46,6 +46,14 @@
         "help_text": "The channel is used to setup a private channel for book service group to manage borrowint workflow",
         "placeholder": "borrow",
         "default": "borrow"
+      },
+      {
+        "key": "BorrowLimit",
+        "display_name": "Borrowing books limit:",
+        "type": "number",
+        "help_text": "The max books can be borrowed befored returned",
+        "placeholder": 2,
+        "default": 2
       }
     ]
   }

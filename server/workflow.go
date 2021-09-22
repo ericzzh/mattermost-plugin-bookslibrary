@@ -121,10 +121,32 @@ func (p *Plugin) _handleWorkflowBorrow(req *WorkflowRequest, all map[string][]*b
 				p._changeStatus(req, br.borrow, STATUS_CONFIRMED)
 				// should be put after change status, because the workfolw will be also set in that process.
 				br.borrow.DataOrImage.ConfirmDate = p._setDateIf(STATUS_CONFIRMED, br.borrow.DataOrImage)
+				br.borrow.DataOrImage.Next = []Next{
+					{
+						NextWorkFlowType: WORKFLOW_BORROW,
+						NextStatus:       STATUS_DELIVIED,
+					},
+				}
+				br.borrow.DataOrImage.ActUsers = []string{
+					br.borrow.DataOrImage.BorrowerUser,
+				}
 			case STATUS_DELIVIED:
 				p._changeStatus(req, br.borrow, STATUS_DELIVIED)
 				// should be put after change status, because the workfolw will be also set in that process.
 				br.borrow.DataOrImage.DeliveryDate = p._setDateIf(STATUS_DELIVIED, br.borrow.DataOrImage)
+				br.borrow.DataOrImage.Next = []Next{
+					{
+						NextWorkFlowType: WORKFLOW_RENEW,
+						NextStatus:       STATUS_RENEW_REQUESTED,
+					},
+					{
+						NextWorkFlowType: WORKFLOW_RETURN,
+						NextStatus:       STATUS_RETURN_REQUESTED,
+					},
+				}
+				br.borrow.DataOrImage.ActUsers = []string{
+					br.borrow.DataOrImage.BorrowerUser,
+				}
 			default:
 				return errors.New(fmt.Sprintf("Unknown workflow status: %v", req.MoveToStatus))
 			}
@@ -143,10 +165,28 @@ func (p *Plugin) _handleWorkflowRenew(req *WorkflowRequest, all map[string][]*bo
 				p._changeStatus(req, br.borrow, STATUS_RENEW_REQUESTED)
 				// should be put after change status, because the workfolw will be also set in that process.
 				br.borrow.DataOrImage.RenewReqDate = p._setDateIf(STATUS_RENEW_REQUESTED, br.borrow.DataOrImage)
+				br.borrow.DataOrImage.Next = []Next{
+					{
+						NextWorkFlowType: WORKFLOW_RENEW,
+						NextStatus:       STATUS_RENEW_CONFIRMED,
+					},
+				}
+				br.borrow.DataOrImage.ActUsers = []string{
+					br.borrow.DataOrImage.LibworkerUser,
+				}
 			case STATUS_RENEW_CONFIRMED:
 				p._changeStatus(req, br.borrow, STATUS_RENEW_CONFIRMED)
 				// should be put after change status, because the workfolw will be also set in that process.
 				br.borrow.DataOrImage.RenewConfDate = p._setDateIf(STATUS_RENEW_CONFIRMED, br.borrow.DataOrImage)
+				br.borrow.DataOrImage.Next = []Next{
+					{
+						NextWorkFlowType: WORKFLOW_RETURN,
+						NextStatus:       STATUS_RETURN_REQUESTED,
+					},
+				}
+				br.borrow.DataOrImage.ActUsers = []string{
+					br.borrow.DataOrImage.BorrowerUser,
+				}
 			default:
 				return errors.New(fmt.Sprintf("Unknown workflow status: %v", req.MoveToStatus))
 			}
@@ -163,12 +203,30 @@ func (p *Plugin) _handleWorkflowReturn(req *WorkflowRequest, all map[string][]*b
 			case STATUS_RETURN_REQUESTED:
 				p._changeStatus(req, br.borrow, STATUS_RETURN_REQUESTED)
 				br.borrow.DataOrImage.ReturnReqDate = p._setDateIf(STATUS_RETURN_REQUESTED, br.borrow.DataOrImage)
+				br.borrow.DataOrImage.Next = []Next{
+					{
+						NextWorkFlowType: WORKFLOW_RETURN,
+						NextStatus:       STATUS_RETURN_CONFIRMED,
+					},
+				}
+				br.borrow.DataOrImage.ActUsers = []string{
+					br.borrow.DataOrImage.LibworkerUser,
+				}
 			case STATUS_RETURN_CONFIRMED:
 				p._changeStatus(req, br.borrow, STATUS_RETURN_CONFIRMED)
 				br.borrow.DataOrImage.ReturnConfDate = p._setDateIf(STATUS_RETURN_CONFIRMED, br.borrow.DataOrImage)
+				br.borrow.DataOrImage.Next = []Next{
+					{
+						NextWorkFlowType: WORKFLOW_RETURN,
+						NextStatus:       STATUS_RETURNED,
+					},
+				}
+				br.borrow.DataOrImage.ActUsers = br.borrow.DataOrImage.KeeperUsers
 			case STATUS_RETURNED:
 				p._changeStatus(req, br.borrow, STATUS_RETURNED)
 				br.borrow.DataOrImage.ReturnDelvDate = p._setDateIf(STATUS_RETURNED, br.borrow.DataOrImage)
+				br.borrow.DataOrImage.Next = nil
+                                br.borrow.DataOrImage.ActUsers = nil
 			default:
 				return errors.New(fmt.Sprintf("Unknown workflow status: %v", req.MoveToStatus))
 			}
@@ -328,12 +386,12 @@ func (p *Plugin) _notifyStatusChange(all map[string][]*borrowWithPost, req *Work
 				if _, appErr := p.API.CreatePost(&model.Post{
 					UserId:    p.botID,
 					ChannelId: br.post.ChannelId,
-					Message:   fmt.Sprintf("Status was changed to %v, by @%v.", 
-                                           br.borrow.DataOrImage.Status, req.ActUser ),
-					RootId:    br.post.Id,
+					Message: fmt.Sprintf("Status was changed to %v, by @%v.",
+						br.borrow.DataOrImage.Status, req.ActUser),
+					RootId: br.post.Id,
 				}); appErr != nil {
-					return errors.Wrapf(appErr, 
-                                        "Failed to notify status change. role: %v, userid: %v", role, br.post.UserId)
+					return errors.Wrapf(appErr,
+						"Failed to notify status change. role: %v, userid: %v", role, br.post.UserId)
 				}
 			}
 		}

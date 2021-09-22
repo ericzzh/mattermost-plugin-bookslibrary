@@ -19,7 +19,7 @@ import (
 func TestHandleBorrow(t *testing.T) {
 	_ = fmt.Println
 
-        td := NewTestData()
+	td := NewTestData()
 
 	bookPostId := td.BookPostId
 
@@ -29,7 +29,7 @@ func TestHandleBorrow(t *testing.T) {
 	borrowUser := td.BorrowUser
 
 	reqKey := td.ReqKey
-        reqKeyJson, _ := json.Marshal(reqKey)
+	reqKeyJson, _ := json.Marshal(reqKey)
 
 	borId_botId := td.BorId_botId
 	worker1Id_botId := td.Worker1Id_botId
@@ -41,10 +41,10 @@ func TestHandleBorrow(t *testing.T) {
 
 	newMockPlugin := td.NewMockPlugin
 
-	matchPost := td.MatchPostByChannel 
+	matchPost := td.MatchPostByChannel
 	matchPostById := td.MatchPostById
 
-        t.Run("_makeBorrowRequest", func(t *testing.T) {
+	t.Run("_makeBorrowRequest", func(t *testing.T) {
 		api := apiMockCommon()
 		plugin := newMockPlugin()
 		plugin.SetAPI(api)
@@ -82,8 +82,12 @@ func TestHandleBorrow(t *testing.T) {
 		plugin.SetAPI(api)
 
 		var realbr *Borrow
-                getCurrentPosts := GenerateBorrowRequest(td, plugin, api)
-                realbrPosts, realbrUpdPosts,createdPid := getCurrentPosts() 
+		getCurrentPosts := GenerateBorrowRequest(td, plugin, api)
+		returnedInfo := getCurrentPosts()
+
+		realbrPosts := returnedInfo.RealbrPost
+		realbrUpdPosts := returnedInfo.RealbrUpdPosts
+		createdPid := returnedInfo.CreatedPid
 
 		//------- Verfication -------
 		realbrMsg := realbrPosts[plugin.borrowChannel.Id].Message
@@ -105,8 +109,8 @@ func TestHandleBorrow(t *testing.T) {
 			channelId    string
 			borrower     string
 			borrowerName string
-                        worker       string
-                        workerName   string
+			worker       string
+			workerName   string
 			keeperUsers  []string
 			keeperNames  []string
 			workflow     []string
@@ -117,8 +121,8 @@ func TestHandleBorrow(t *testing.T) {
 				channelId:    plugin.borrowChannel.Id,
 				borrower:     borrowUser,
 				borrowerName: "bookbor",
-                                worker:       realwk,
-                                workerName:   realwkName,
+				worker:       realwk,
+				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
 				keeperNames:  []string{"kpname1", "kpname2"},
 				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
@@ -135,8 +139,8 @@ func TestHandleBorrow(t *testing.T) {
 				channelId:    borId_botId,
 				borrower:     borrowUser,
 				borrowerName: "bookbor",
-                                worker:       realwk,
-                                workerName:   realwkName,
+				worker:       realwk,
+				workerName:   realwkName,
 				keeperUsers:  []string{},
 				keeperNames:  []string{},
 				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
@@ -151,8 +155,8 @@ func TestHandleBorrow(t *testing.T) {
 				channelId:    dirWkChId,
 				borrower:     borrowUser,
 				borrowerName: "bookbor",
-                                worker:       realwk,
-                                workerName:   realwkName,
+				worker:       realwk,
+				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
 				keeperNames:  []string{"kpname1", "kpname2"},
 				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
@@ -169,8 +173,8 @@ func TestHandleBorrow(t *testing.T) {
 				channelId:    keeper1Id_botId,
 				borrower:     "",
 				borrowerName: "",
-                                worker:       realwk,
-                                workerName:   realwkName,
+				worker:       realwk,
+				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
 				keeperNames:  []string{"kpname1", "kpname2"},
 				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED},
@@ -186,8 +190,8 @@ func TestHandleBorrow(t *testing.T) {
 				channelId:    keeper2Id_botId,
 				borrower:     "",
 				borrowerName: "",
-                                worker:       realwk,
-                                workerName:   realwkName,
+				worker:       realwk,
+				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
 				keeperNames:  []string{"kpname1", "kpname2"},
 				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED},
@@ -199,12 +203,12 @@ func TestHandleBorrow(t *testing.T) {
 				},
 			},
 		} {
-                        // fmt.Printf("******** %v\n", role.role)
-                        // fmt.Printf("******** %v\n", realbrPosts[role.channelId].Message)
-                        var thisRealBr Borrow
-                        _ = json.Unmarshal([]byte(realbrPosts[role.channelId].Message), &thisRealBr)
-                        // fmt.Printf("******* err: %v", err)
-                        // fmt.Printf("******* Unmarshaled: %v", thisRealBr)
+			// fmt.Printf("******** %v\n", role.role)
+			// fmt.Printf("******** %v\n", realbrPosts[role.channelId].Message)
+			var thisRealBr Borrow
+			_ = json.Unmarshal([]byte(realbrPosts[role.channelId].Message), &thisRealBr)
+			// fmt.Printf("******* err: %v", err)
+			// fmt.Printf("******* Unmarshaled: %v", thisRealBr)
 
 			br := &BorrowRequest{
 				BookPostId:    bookPostId,
@@ -220,8 +224,16 @@ func TestHandleBorrow(t *testing.T) {
 				RequestDate:   thisRealBr.DataOrImage.RequestDate,
 				WorkflowType:  WORKFLOW_BORROW,
 				Worflow:       role.workflow,
+				LastStatus:    "",
 				Status:        STATUS_REQUESTED,
-				Tags:          role.tags,
+				Next: []Next{
+					{
+						NextWorkFlowType: WORKFLOW_BORROW,
+						NextStatus:       STATUS_CONFIRMED,
+					},
+				},
+				ActUsers: []string{realwk},
+				Tags:    role.tags,
 			}
 
 			// we have to distribute every library work to a borrow request
@@ -415,6 +427,9 @@ func TestHandleBorrow(t *testing.T) {
 			api.On("UpdatePost", mock.MatchedBy(matchPostById(createdPid[keeper2Id_botId]))).
 				Return(&model.Post{}, nil)
 
+			api.On("SearchPostsInTeam", plugin.team.Id, mock.AnythingOfType("[]*model.SearchParams")).
+				Return([]*model.Post{}, nil)
+
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("POST", "/borrow", bytes.NewReader(reqKeyJson))
 			plugin.ServeHTTP(nil, w, r)
@@ -564,6 +579,8 @@ func TestHandleBorrow(t *testing.T) {
 
 			api.On("CreatePost", mock.AnythingOfType("*model.Post")).Return(&model.Post{}, nil)
 			api.On("UpdatePost", mock.AnythingOfType("*model.Post")).Return(&model.Post{}, nil)
+			api.On("SearchPostsInTeam", plugin.team.Id, mock.AnythingOfType("[]*model.SearchParams")).
+				Return([]*model.Post{}, nil)
 
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("POST", "/borrow", bytes.NewReader(reqKeyJson))

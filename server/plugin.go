@@ -25,6 +25,8 @@ type Plugin struct {
 	borrowChannel *model.Channel
 
 	booksChannel *model.Channel
+
+        borrowTimes int
 }
 
 // ServeHTTP demonstrates a plugin that handles HTTP requests by greeting the world.

@@ -23,6 +23,7 @@ type configuration struct {
 	TeamName                  string
 	BooksChannelName          string
 	BorrowWorkflowChannelName string
+        BorrowLimit               int
 }
 
 // Clone shallow copies the configuration. Your implementation may require a deep copy if
@@ -114,6 +115,8 @@ func (p *Plugin) OnConfigurationChange() error {
 		return errors.Wrap(appErr, "failed to ensure channel")
 	}
 	p.borrowChannel = bchannel
+
+        p.borrowTimes = configuration.BorrowLimit
 
 	return nil
 }
