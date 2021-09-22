@@ -327,16 +327,16 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 	p._setVisibleWorkflowByRoles(bq.WorkflowType, rolesSet, bq)
 	p._setStatusByWorkflow(STATUS_REQUESTED, bq)
 
-        bq.Next = []Next{
-            {
-               NextWorkFlowType: WORKFLOW_BORROW,
-               NextStatus: STATUS_CONFIRMED,
-            },
-        }
+	bq.Next = []Next{
+		{
+			NextWorkFlowType: WORKFLOW_BORROW,
+			NextStatus:       STATUS_CONFIRMED,
+		},
+	}
 
-        bq.ActUsers = []string{
-               bq.LibworkerUser,
-        }
+	bq.ActUsers = []string{
+		bq.LibworkerUser,
+	}
 
 	return bq, nil
 }
@@ -433,37 +433,45 @@ func (p *Plugin) _setStatusByWorkflow(status string, br *BorrowRequest) {
 }
 
 func (p *Plugin) _setVisibleWorkflowByRoles(wt string, rolesSet map[string]bool, br *BorrowRequest) {
+	br.WorkflowType = WORKFLOW_BORROW
+	br.Worflow = []string{}
+	br.Worflow = append(br.Worflow, STATUS_REQUESTED)
+	br.Worflow = append(br.Worflow, STATUS_CONFIRMED)
+	br.Worflow = append(br.Worflow, STATUS_DELIVIED)
+
 	// 1. workflow steps are variant
 	// 2. if not relevent, change nothning ( keep same as last workflow)
-	switch wt {
-	case WORKFLOW_BORROW:
-
-		// common
-		br.WorkflowType = WORKFLOW_BORROW
-		br.Worflow = []string{}
-		br.Worflow = append(br.Worflow, STATUS_REQUESTED)
-		br.Worflow = append(br.Worflow, STATUS_CONFIRMED)
-		if ConstainsInStringSet(rolesSet, []string{MASTER, BORROWER, LIBWORKER}) {
-			br.Worflow = append(br.Worflow, STATUS_DELIVIED)
-		}
-	case WORKFLOW_RENEW:
-		// keepers are not relevant, there is no common part
-		if ConstainsInStringSet(rolesSet, []string{MASTER, BORROWER, LIBWORKER}) {
-			br.Worflow = []string{}
-			br.WorkflowType = WORKFLOW_RENEW
-			br.Worflow = append(br.Worflow, STATUS_RENEW_REQUESTED)
-			br.Worflow = append(br.Worflow, STATUS_RENEW_CONFIRMED)
-		}
-	case WORKFLOW_RETURN:
-		//common
-		br.Worflow = []string{}
-		br.WorkflowType = WORKFLOW_RETURN
-		br.Worflow = append(br.Worflow, STATUS_RETURN_REQUESTED)
-		br.Worflow = append(br.Worflow, STATUS_RETURN_CONFIRMED)
-		if ConstainsInStringSet(rolesSet, []string{MASTER, KEEPER, LIBWORKER}) {
-			br.Worflow = append(br.Worflow, STATUS_RETURNED)
-		}
-	}
+	// ***** Maybe it's too restricted, the status maybe helpful for checking for non-relevent roles.
+        // ***** , at the same time, place 2 sub-workflows in one worklow is hard. So I comment them out
+	// 	switch wt {
+	// 	case WORKFLOW_BORROW:
+	//
+	// 		// common
+	// 		br.WorkflowType = WORKFLOW_BORROW
+	// 		br.Worflow = []string{}
+	// 		br.Worflow = append(br.Worflow, STATUS_REQUESTED)
+	// 		br.Worflow = append(br.Worflow, STATUS_CONFIRMED)
+	// 		if ConstainsInStringSet(rolesSet, []string{MASTER, BORROWER, LIBWORKER}) {
+	// 			br.Worflow = append(br.Worflow, STATUS_DELIVIED)
+	// 		}
+	// 	case WORKFLOW_RENEW:
+	// 		// keepers are not relevant, there is no common part
+	// 		if ConstainsInStringSet(rolesSet, []string{MASTER, BORROWER, LIBWORKER}) {
+	// 			br.Worflow = []string{}
+	// 			br.WorkflowType = WORKFLOW_RENEW
+	// 			br.Worflow = append(br.Worflow, STATUS_RENEW_REQUESTED)
+	// 			br.Worflow = append(br.Worflow, STATUS_RENEW_CONFIRMED)
+	// 		}
+	// 	case WORKFLOW_RETURN:
+	// 		//common
+	// 		br.Worflow = []string{}
+	// 		br.WorkflowType = WORKFLOW_RETURN
+	// 		br.Worflow = append(br.Worflow, STATUS_RETURN_REQUESTED)
+	// 		br.Worflow = append(br.Worflow, STATUS_RETURN_CONFIRMED)
+	// 		if ConstainsInStringSet(rolesSet, []string{MASTER, KEEPER, LIBWORKER}) {
+	// 			br.Worflow = append(br.Worflow, STATUS_RETURNED)
+	// 		}
+	// 	}
 
 }
 

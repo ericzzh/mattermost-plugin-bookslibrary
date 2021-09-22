@@ -177,7 +177,7 @@ func TestHandleBorrow(t *testing.T) {
 				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
 				keeperNames:  []string{"kpname1", "kpname2"},
-				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED},
+				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
 				tags: []string{
 					"#LIBWORKERUSER_EQ_" + realwk,
 					"#KEEPERUSER_EQ_" + "kpuser1",
@@ -194,7 +194,7 @@ func TestHandleBorrow(t *testing.T) {
 				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
 				keeperNames:  []string{"kpname1", "kpname2"},
-				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED},
+				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
 				tags: []string{
 					"#LIBWORKERUSER_EQ_" + realwk,
 					"#KEEPERUSER_EQ_" + "kpuser1",
