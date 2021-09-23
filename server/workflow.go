@@ -49,41 +49,10 @@ func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter,
 
 	defer p._unlock(all)
 
-	switch workflowReq.MoveToWorkflow {
-
-	case WORKFLOW_BORROW:
-		if err := p._handleWorkflowBorrow(workflowReq, all); err != nil {
-			p.API.LogError("Process status error.", "status", workflowReq.MoveToStatus, "workflow", workflowReq.MoveToWorkflow)
-			resp, _ := json.Marshal(Result{
-				Error: fmt.Sprintf("Process status error. status %v, workflow: %v", workflowReq.MoveToStatus, workflowReq.MoveToWorkflow),
-			})
-
-			w.Write(resp)
-			return
-		}
-	case WORKFLOW_RENEW:
-		if err := p._handleWorkflowRenew(workflowReq, all); err != nil {
-			p.API.LogError("Process status error.", "status", workflowReq.MoveToStatus, "workflow", workflowReq.MoveToWorkflow)
-			resp, _ := json.Marshal(Result{
-				Error: fmt.Sprintf("Process status error. status %v, workflow: %v", workflowReq.MoveToStatus, workflowReq.MoveToWorkflow),
-			})
-
-			w.Write(resp)
-			return
-		}
-	case WORKFLOW_RETURN:
-		if err := p._handleWorkflowReturn(workflowReq, all); err != nil {
-			p.API.LogError("Process status error.", "status", workflowReq.MoveToStatus, "workflow", workflowReq.MoveToWorkflow)
-			resp, _ := json.Marshal(Result{
-				Error: fmt.Sprintf("Process status error. status %v, workflow: %v", workflowReq.MoveToStatus, workflowReq.MoveToWorkflow),
-			})
-			w.Write(resp)
-			return
-		}
-	default:
-		p.API.LogError("Next worflow type is wrong.", "workflow", workflowReq.MoveToWorkflow)
+	if err := p._process(workflowReq, all); err != nil {
+		p.API.LogError("Process  error.", "error", err.Error())
 		resp, _ := json.Marshal(Result{
-			Error: "Next worflow type is wrong.",
+			Error: fmt.Sprintf("process error."),
 		})
 
 		w.Write(resp)
@@ -112,131 +81,85 @@ func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter,
 
 }
 
-func (p *Plugin) _handleWorkflowBorrow(req *WorkflowRequest, all map[string][]*borrowWithPost) error {
+func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost) error {
 
-	for _, brs := range all {
-		for _, br := range brs {
-			switch req.MoveToStatus {
-			case STATUS_CONFIRMED:
-				p._changeStatus(req, br.borrow, STATUS_CONFIRMED)
-				// should be put after change status, because the workfolw will be also set in that process.
-				br.borrow.DataOrImage.ConfirmDate = p._setDateIf(STATUS_CONFIRMED, br.borrow.DataOrImage)
-				br.borrow.DataOrImage.Next = []Next{
-					{
-						NextWorkFlowType: WORKFLOW_BORROW,
-						NextStatus:       STATUS_DELIVIED,
-					},
+	actionTime := GetNowTime()
+	for _, role := range []string{
+		MASTER, BORROWER, LIBWORKER, KEEPER,
+	} {
+		for _, br := range all[role] {
+			nextStep := &br.borrow.DataOrImage.Worflow[req.NextStepIndex]
+
+			// usersSet := ConvertStringArrayToSet(p._getUserByRole(nextStep.ActorRole, br.borrow.DataOrImage))
+			// if role == MASTER {
+			// 	if !ConstainsInStringSet(usersSet, []string{req.ActorUser}) {
+			// 		return errors.New(fmt.Sprintf("This user is not of current actor role"))
+			// 	}
+			// }
+
+			switch nextStep.WorkflowType {
+			case WORKFLOW_BORROW:
+				switch nextStep.Status {
+				case STATUS_REQUESTED:
+				case STATUS_CONFIRMED:
+				case STATUS_DELIVIED:
+				default:
+					return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
 				}
-				br.borrow.DataOrImage.ActUsers = []string{
-					br.borrow.DataOrImage.BorrowerUser,
+			case WORKFLOW_RENEW:
+				switch nextStep.Status {
+				case STATUS_RENEW_REQUESTED:
+				case STATUS_RENEW_CONFIRMED:
+				default:
+					return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
 				}
-			case STATUS_DELIVIED:
-				p._changeStatus(req, br.borrow, STATUS_DELIVIED)
-				// should be put after change status, because the workfolw will be also set in that process.
-				br.borrow.DataOrImage.DeliveryDate = p._setDateIf(STATUS_DELIVIED, br.borrow.DataOrImage)
-				br.borrow.DataOrImage.Next = []Next{
-					{
-						NextWorkFlowType: WORKFLOW_RENEW,
-						NextStatus:       STATUS_RENEW_REQUESTED,
-					},
-					{
-						NextWorkFlowType: WORKFLOW_RETURN,
-						NextStatus:       STATUS_RETURN_REQUESTED,
-					},
-				}
-				br.borrow.DataOrImage.ActUsers = []string{
-					br.borrow.DataOrImage.BorrowerUser,
+			case WORKFLOW_RETURN:
+				switch nextStep.Status {
+				case STATUS_RETURN_REQUESTED:
+				case STATUS_RETURN_CONFIRMED:
+				case STATUS_RETURNED:
+				default:
+					return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
 				}
 			default:
-				return errors.New(fmt.Sprintf("Unknown workflow status: %v", req.MoveToStatus))
+				return errors.New(fmt.Sprintf("Unknown workflow: %v", nextStep.WorkflowType))
 			}
+
+			nextStep.ActionDate = actionTime
+			nextStep.Completed = true
+			br.borrow.DataOrImage.LastStepIndex = br.borrow.DataOrImage.StepIndex
+			br.borrow.DataOrImage.StepIndex = req.NextStepIndex
+			p._setTags(nextStep.Status, br.borrow.DataOrImage)
+
 		}
 	}
 
 	return nil
 }
 
-func (p *Plugin) _handleWorkflowRenew(req *WorkflowRequest, all map[string][]*borrowWithPost) error {
+func (p *Plugin) _getUserByRole(step Step, brqRole string, brq *BorrowRequest) []string {
 
-	for _, brs := range all {
-		for _, br := range brs {
-			switch req.MoveToStatus {
-			case STATUS_RENEW_REQUESTED:
-				p._changeStatus(req, br.borrow, STATUS_RENEW_REQUESTED)
-				// should be put after change status, because the workfolw will be also set in that process.
-				br.borrow.DataOrImage.RenewReqDate = p._setDateIf(STATUS_RENEW_REQUESTED, br.borrow.DataOrImage)
-				br.borrow.DataOrImage.Next = []Next{
-					{
-						NextWorkFlowType: WORKFLOW_RENEW,
-						NextStatus:       STATUS_RENEW_CONFIRMED,
-					},
-				}
-				br.borrow.DataOrImage.ActUsers = []string{
-					br.borrow.DataOrImage.LibworkerUser,
-				}
-			case STATUS_RENEW_CONFIRMED:
-				p._changeStatus(req, br.borrow, STATUS_RENEW_CONFIRMED)
-				// should be put after change status, because the workfolw will be also set in that process.
-				br.borrow.DataOrImage.RenewConfDate = p._setDateIf(STATUS_RENEW_CONFIRMED, br.borrow.DataOrImage)
-				br.borrow.DataOrImage.Next = []Next{
-					{
-						NextWorkFlowType: WORKFLOW_RETURN,
-						NextStatus:       STATUS_RETURN_REQUESTED,
-					},
-				}
-				br.borrow.DataOrImage.ActUsers = []string{
-					br.borrow.DataOrImage.BorrowerUser,
-				}
-			default:
-				return errors.New(fmt.Sprintf("Unknown workflow status: %v", req.MoveToStatus))
-			}
+	switch step.ActorRole {
+	case BORROWER:
+		if brq.BorrowerUser == "" {
+			return nil
 		}
-	}
-	return nil
-}
-
-func (p *Plugin) _handleWorkflowReturn(req *WorkflowRequest, all map[string][]*borrowWithPost) error {
-
-	for _, brs := range all {
-		for _, br := range brs {
-			switch req.MoveToStatus {
-			case STATUS_RETURN_REQUESTED:
-				p._changeStatus(req, br.borrow, STATUS_RETURN_REQUESTED)
-				br.borrow.DataOrImage.ReturnReqDate = p._setDateIf(STATUS_RETURN_REQUESTED, br.borrow.DataOrImage)
-				br.borrow.DataOrImage.Next = []Next{
-					{
-						NextWorkFlowType: WORKFLOW_RETURN,
-						NextStatus:       STATUS_RETURN_CONFIRMED,
-					},
-				}
-				br.borrow.DataOrImage.ActUsers = []string{
-					br.borrow.DataOrImage.LibworkerUser,
-				}
-			case STATUS_RETURN_CONFIRMED:
-				p._changeStatus(req, br.borrow, STATUS_RETURN_CONFIRMED)
-				br.borrow.DataOrImage.ReturnConfDate = p._setDateIf(STATUS_RETURN_CONFIRMED, br.borrow.DataOrImage)
-				br.borrow.DataOrImage.Next = []Next{
-					{
-						NextWorkFlowType: WORKFLOW_RETURN,
-						NextStatus:       STATUS_RETURNED,
-					},
-				}
-				br.borrow.DataOrImage.ActUsers = br.borrow.DataOrImage.KeeperUsers
-			case STATUS_RETURNED:
-				p._changeStatus(req, br.borrow, STATUS_RETURNED)
-				br.borrow.DataOrImage.ReturnDelvDate = p._setDateIf(STATUS_RETURNED, br.borrow.DataOrImage)
-				br.borrow.DataOrImage.Next = nil
-                                br.borrow.DataOrImage.ActUsers = nil
-			default:
-				return errors.New(fmt.Sprintf("Unknown workflow status: %v", req.MoveToStatus))
-			}
+		return []string{brq.BorrowerUser}
+	case LIBWORKER:
+		if brq.LibworkerUser == "" {
+			return nil
 		}
+		return []string{brq.LibworkerUser}
+	case KEEPER:
+		if len(brq.KeeperNames) == 0 {
+			return nil
+		}
+		return brq.KeeperNames
 	}
+
 	return nil
 }
-func (p *Plugin) _setStatus(role string, all map[string]*borrowWithPost, toStatus string) error {
-	return nil
-}
+
 func (p *Plugin) _getBorrowById(id string) (*borrowWithPost, error) {
 	var bwp borrowWithPost
 
@@ -369,25 +292,21 @@ func (p *Plugin) _rollbackToOld(updated []*model.Post) {
 	}
 }
 
-func (p *Plugin) _changeStatus(req *WorkflowRequest, br *Borrow, moveToStatus string) {
-	//reset workflow
-	if req.CurrentWorkflow != req.MoveToWorkflow {
-		rolesSet := ConvertStringArrayToSet(br.Role)
-		p._setVisibleWorkflowByRoles(req.MoveToWorkflow, rolesSet, br.DataOrImage)
-	}
-	p._setStatusByWorkflow(moveToStatus, br.DataOrImage)
-}
-
 func (p *Plugin) _notifyStatusChange(all map[string][]*borrowWithPost, req *WorkflowRequest) error {
-	for role, brw := range all {
-		for _, br := range brw {
-			if br.borrow.DataOrImage.Status == req.MoveToStatus &&
-				br.borrow.DataOrImage.WorkflowType == req.MoveToWorkflow {
+	for _, role := range []string{
+		MASTER, BORROWER, LIBWORKER, KEEPER,
+	} {
+		for _, br := range all[role] {
+			currStep := br.borrow.DataOrImage.Worflow[br.borrow.DataOrImage.StepIndex]
+
+                        relatedRoleSet := ConvertStringArrayToSet(currStep.RelatedRoles)
+                        
+			if ConstainsInStringSet(relatedRoleSet, []string{role}) {
 				if _, appErr := p.API.CreatePost(&model.Post{
 					UserId:    p.botID,
 					ChannelId: br.post.ChannelId,
 					Message: fmt.Sprintf("Status was changed to %v, by @%v.",
-						br.borrow.DataOrImage.Status, req.ActUser),
+						currStep.Status, req.ActorUser),
 					RootId: br.post.Id,
 				}); appErr != nil {
 					return errors.Wrapf(appErr,

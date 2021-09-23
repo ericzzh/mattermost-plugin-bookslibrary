@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"sort"
 	"testing"
-	"time"
+	// "time"
 
 	"github.com/mattermost/mattermost-server/v5/model"
 	// "github.com/mattermost/mattermost-server/v5/plugin/plugintest"
@@ -45,11 +45,14 @@ func TestHandleBorrow(t *testing.T) {
 	matchPostById := td.MatchPostById
 
 	t.Run("_makeBorrowRequest", func(t *testing.T) {
+                otherData := otherRequestData{
+                    processTime: GetNowTime(),
+                }
 		api := apiMockCommon()
 		plugin := newMockPlugin()
 		plugin.SetAPI(api)
 
-		br, _ := plugin._makeBorrowRequest(&reqKey, borrowUser, []string{MASTER}, nil)
+		br, _ := plugin._makeBorrowRequest(&reqKey, borrowUser, []string{MASTER}, nil, otherData)
 		assert.Equal(t, aBook.Id, br.BookId, "BookId")
 		assert.Equal(t, aBook.Name, br.BookName, "BookName")
 		assert.Equal(t, aBook.Author, br.Author, "Author")
@@ -60,12 +63,17 @@ func TestHandleBorrow(t *testing.T) {
 		assert.Equal(t, aBook.KeeperUsers, br.KeeperUsers, "KeeperUsers")
 		assert.Equal(t, aBook.KeeperNames, br.KeeperNames, "KeeperNames")
 
-		testTime := time.Now().Add(-10 * time.Second).Unix()
 
-		assert.Greater(t, br.RequestDate, int64(testTime), "RequestDate")
-		assert.Equal(t, WORKFLOW_BORROW, br.WorkflowType, "WorkflowType")
-		assert.Equal(t, []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED}, br.Worflow, "WorkflowType")
-		assert.Equal(t, STATUS_REQUESTED, br.Status, "Status")
+		assert.Equal(t, 0, br.StepIndex, "StepIndex")
+		assert.Equal(t, -1, br.LastStepIndex, "LastStepIndex")
+
+		// testTime := time.Now().Add(-10 * time.Second).Unix()
+		assert.Equal(t, br.Worflow[0].ActionDate, otherData.processTime, "RequestDate")
+
+		wf := plugin._createWFTemplate(0)
+		br.Worflow[0].ActionDate = 0
+		assert.Equal(t, wf, br.Worflow, "Workflow")
+
 		assert.Equal(t, []string{
 			"#BORROWERUSER_EQ_" + borrowUser,
 			"#LIBWORKERUSER_EQ_" + br.LibworkerUser,
@@ -113,7 +121,7 @@ func TestHandleBorrow(t *testing.T) {
 			workerName   string
 			keeperUsers  []string
 			keeperNames  []string
-			workflow     []string
+			workflow     []Step
 			tags         []string
 		}{
 			{
@@ -125,7 +133,7 @@ func TestHandleBorrow(t *testing.T) {
 				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
 				keeperNames:  []string{"kpname1", "kpname2"},
-				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
+				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
 					"#BORROWERUSER_EQ_" + borrowUser,
 					"#LIBWORKERUSER_EQ_" + realwk,
@@ -143,7 +151,7 @@ func TestHandleBorrow(t *testing.T) {
 				workerName:   realwkName,
 				keeperUsers:  []string{},
 				keeperNames:  []string{},
-				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
+				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
 					"#BORROWERUSER_EQ_" + borrowUser,
 					"#LIBWORKERUSER_EQ_" + realwk,
@@ -159,7 +167,7 @@ func TestHandleBorrow(t *testing.T) {
 				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
 				keeperNames:  []string{"kpname1", "kpname2"},
-				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
+				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
 					"#BORROWERUSER_EQ_" + borrowUser,
 					"#LIBWORKERUSER_EQ_" + realwk,
@@ -177,7 +185,7 @@ func TestHandleBorrow(t *testing.T) {
 				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
 				keeperNames:  []string{"kpname1", "kpname2"},
-				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
+				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
 					"#LIBWORKERUSER_EQ_" + realwk,
 					"#KEEPERUSER_EQ_" + "kpuser1",
@@ -194,7 +202,7 @@ func TestHandleBorrow(t *testing.T) {
 				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
 				keeperNames:  []string{"kpname1", "kpname2"},
-				workflow:     []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
+				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
 					"#LIBWORKERUSER_EQ_" + realwk,
 					"#KEEPERUSER_EQ_" + "kpuser1",
@@ -203,13 +211,10 @@ func TestHandleBorrow(t *testing.T) {
 				},
 			},
 		} {
-			// fmt.Printf("******** %v\n", role.role)
-			// fmt.Printf("******** %v\n", realbrPosts[role.channelId].Message)
 			var thisRealBr Borrow
 			_ = json.Unmarshal([]byte(realbrPosts[role.channelId].Message), &thisRealBr)
-			// fmt.Printf("******* err: %v", err)
-			// fmt.Printf("******* Unmarshaled: %v", thisRealBr)
 
+			role.workflow[0].ActionDate = thisRealBr.DataOrImage.Worflow[0].ActionDate
 			br := &BorrowRequest{
 				BookPostId:    bookPostId,
 				BookId:        aBook.Id,
@@ -221,19 +226,10 @@ func TestHandleBorrow(t *testing.T) {
 				LibworkerName: role.workerName,
 				KeeperUsers:   role.keeperUsers,
 				KeeperNames:   role.keeperNames,
-				RequestDate:   thisRealBr.DataOrImage.RequestDate,
-				WorkflowType:  WORKFLOW_BORROW,
 				Worflow:       role.workflow,
-				LastStatus:    "",
-				Status:        STATUS_REQUESTED,
-				Next: []Next{
-					{
-						NextWorkFlowType: WORKFLOW_BORROW,
-						NextStatus:       STATUS_CONFIRMED,
-					},
-				},
-				ActUsers: []string{realwk},
-				Tags:    role.tags,
+				StepIndex:     0,
+				LastStepIndex: -1,
+				Tags:          role.tags,
 			}
 
 			// we have to distribute every library work to a borrow request

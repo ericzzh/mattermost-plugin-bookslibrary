@@ -15,7 +15,14 @@ import (
 	"github.com/pkg/errors"
 )
 
+type otherRequestData struct {
+	processTime int64
+}
+
 func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r *http.Request) {
+	var otherData otherRequestData
+	otherData.processTime = GetNowTime()
+
 	var borrowRequestKey *BorrowRequestKey
 	err := json.NewDecoder(r.Body).Decode(&borrowRequestKey)
 	if err != nil {
@@ -50,7 +57,8 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 	}
 
 	//make borrow request from key
-	borrowRequestMaster, err := p._makeBorrowRequest(borrowRequestKey, borrowRequestKey.BorrowerUser, []string{MASTER}, nil)
+	borrowRequestMaster, err := p._makeBorrowRequest(borrowRequestKey, borrowRequestKey.BorrowerUser, []string{MASTER}, nil,
+		otherData)
 	if err != nil {
 		p.API.LogError("Failed to make borrow request.", "err", fmt.Sprintf("%+v", err), "role", MASTER)
 		resp, _ := json.Marshal(Result{
@@ -95,7 +103,8 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 	for user, roles := range roleByUser {
 
 		//make borrow request from key
-		borrowRequest, err := p._makeBorrowRequest(borrowRequestKey, borrowRequestKey.BorrowerUser, roles, borrowRequestMaster)
+		borrowRequest, err := p._makeBorrowRequest(borrowRequestKey, borrowRequestKey.BorrowerUser, roles, borrowRequestMaster,
+			otherData)
 		if err != nil {
 			p.API.LogError("Failed to make borrow request.", "err", fmt.Sprintf("%+v", err), "roles", strings.Join(roles, ","))
 			resp, _ := json.Marshal(Result{
@@ -246,7 +255,8 @@ func (p *Plugin) _updateRelations(post *model.Post, relations RelationKeys, borr
 
 }
 
-func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, roles []string, masterBr *BorrowRequest) (*BorrowRequest, error) {
+func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, roles []string, masterBr *BorrowRequest,
+	otherData otherRequestData) (*BorrowRequest, error) {
 
 	var err error
 	var book Book
@@ -271,14 +281,12 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 		bq.BookId = book.Id
 		bq.BookName = book.Name
 		bq.Author = book.Author
-		bq.RequestDate = GetNowTime()
 	} else {
 
 		bq.BookPostId = masterBr.BookPostId
 		bq.BookId = masterBr.BookId
 		bq.BookName = masterBr.BookName
 		bq.Author = masterBr.Author
-		bq.RequestDate = masterBr.RequestDate
 	}
 
 	bq.Tags = []string{}
@@ -322,21 +330,11 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 		}
 	}
 
-	bq.WorkflowType = WORKFLOW_BORROW
+	bq.Worflow = p._createWFTemplate(otherData.processTime)
+	p._setTags(STATUS_REQUESTED, bq)
 
-	p._setVisibleWorkflowByRoles(bq.WorkflowType, rolesSet, bq)
-	p._setStatusByWorkflow(STATUS_REQUESTED, bq)
-
-	bq.Next = []Next{
-		{
-			NextWorkFlowType: WORKFLOW_BORROW,
-			NextStatus:       STATUS_CONFIRMED,
-		},
-	}
-
-	bq.ActUsers = []string{
-		bq.LibworkerUser,
-	}
+	bq.StepIndex = 0
+	bq.LastStepIndex = -1
 
 	return bq, nil
 }
@@ -357,121 +355,115 @@ func (p *Plugin) _distributeWorker(libworkers []string) string {
 	return libworkers[who]
 }
 
-// func (p *Plugin) _adjustFieldsByRoles(roles []string, brFull *BorrowRequest) *BorrowRequest {
-// 	var brDup *BorrowRequest
-// 	DeepCopyBorrowRequest(brDup, brFull)
-//
-// 	p._clearAllVisible(brDup)
-// 	for _, role := range roles {
-// 		p._setVisibleFieldsByRole(role, brDup, brFull)
-// 	}
-//
-// 	// stepsSet := ConvertStringArrayToSet(brDup.Worflow)
-//
-// 	return nil
-// }
-//
-// func (p *Plugin) _clearAllVisible(br *BorrowRequest) {
-// 	br.KeeperUsers = []string{}
-// 	br.KeeperNames = []string{}
-// 	br.BorrowerUser = ""
-// 	br.BorrowerName = ""
-// 	br.Worflow = []string{}
-// 	br.Status = ""
-// 	br.Tags = []string{}
-// }
-//
-// func (p *Plugin) _setVisibleFieldsByRole(role string, br *BorrowRequest, brFull *BorrowRequest) {
-//
-// 	switch role {
-// 	case BORROWER:
-// 		br.BorrowerUser = brFull.BorrowerUser
-// 		br.BorrowerName = brFull.BorrowerName
-// 		br.Tags = append(br.Tags)
-// 	case LIBWORKER:
-// 		br.BorrowerUser = brFull.BorrowerUser
-// 		br.BorrowerName = brFull.BorrowerName
-// 		br.KeeperUsers = brFull.KeeperUsers
-// 		br.KeeperNames = brFull.KeeperNames
-// 	case KEEPER:
-// 		br.KeeperUsers = brFull.KeeperUsers
-// 		br.KeeperNames = brFull.KeeperNames
-// 	default:
-// 	}
-//
-// }
+func (p *Plugin) _setTags(status string, br *BorrowRequest) {
 
-func (p *Plugin) _setDateIf(status string, br *BorrowRequest) int64 {
-	stepsSet := ConvertStringArrayToSet(br.Worflow)
+	stag := "#STATUS_EQ_" + status
 
-	if ConstainsInStringSet(stepsSet, []string{status}) {
-		return GetNowTime()
-	}
-
-	return 0
-}
-func (p *Plugin) _setStatusByWorkflow(status string, br *BorrowRequest) {
-	stepsSet := ConvertStringArrayToSet(br.Worflow)
-
-	if ConstainsInStringSet(stepsSet, []string{status}) {
-		br.LastStatus = br.Status
-		br.Status = status
-		stag := "#STATUS_EQ_" + br.Status
-
-		for i, tag := range br.Tags {
-			if strings.HasPrefix(tag, "#STATUS_EQ_") {
-				br.Tags[i] = stag
-				return
-			}
+	for i, tag := range br.Tags {
+		if strings.HasPrefix(tag, "#STATUS_EQ_") {
+			br.Tags[i] = stag
+			return
 		}
-
-		br.Tags = append(br.Tags, []string{
-			"#STATUS_EQ_" + br.Status,
-		}...)
 	}
+
+	br.Tags = append(br.Tags, []string{
+		"#STATUS_EQ_" + status,
+	}...)
 
 }
 
-func (p *Plugin) _setVisibleWorkflowByRoles(wt string, rolesSet map[string]bool, br *BorrowRequest) {
-	br.WorkflowType = WORKFLOW_BORROW
-	br.Worflow = []string{}
-	br.Worflow = append(br.Worflow, STATUS_REQUESTED)
-	br.Worflow = append(br.Worflow, STATUS_CONFIRMED)
-	br.Worflow = append(br.Worflow, STATUS_DELIVIED)
+func (p *Plugin) _createWFTemplate(prt int64) []Step {
 
-	// 1. workflow steps are variant
-	// 2. if not relevent, change nothning ( keep same as last workflow)
-	// ***** Maybe it's too restricted, the status maybe helpful for checking for non-relevent roles.
-        // ***** , at the same time, place 2 sub-workflows in one worklow is hard. So I comment them out
-	// 	switch wt {
-	// 	case WORKFLOW_BORROW:
-	//
-	// 		// common
-	// 		br.WorkflowType = WORKFLOW_BORROW
-	// 		br.Worflow = []string{}
-	// 		br.Worflow = append(br.Worflow, STATUS_REQUESTED)
-	// 		br.Worflow = append(br.Worflow, STATUS_CONFIRMED)
-	// 		if ConstainsInStringSet(rolesSet, []string{MASTER, BORROWER, LIBWORKER}) {
-	// 			br.Worflow = append(br.Worflow, STATUS_DELIVIED)
-	// 		}
-	// 	case WORKFLOW_RENEW:
-	// 		// keepers are not relevant, there is no common part
-	// 		if ConstainsInStringSet(rolesSet, []string{MASTER, BORROWER, LIBWORKER}) {
-	// 			br.Worflow = []string{}
-	// 			br.WorkflowType = WORKFLOW_RENEW
-	// 			br.Worflow = append(br.Worflow, STATUS_RENEW_REQUESTED)
-	// 			br.Worflow = append(br.Worflow, STATUS_RENEW_CONFIRMED)
-	// 		}
-	// 	case WORKFLOW_RETURN:
-	// 		//common
-	// 		br.Worflow = []string{}
-	// 		br.WorkflowType = WORKFLOW_RETURN
-	// 		br.Worflow = append(br.Worflow, STATUS_RETURN_REQUESTED)
-	// 		br.Worflow = append(br.Worflow, STATUS_RETURN_CONFIRMED)
-	// 		if ConstainsInStringSet(rolesSet, []string{MASTER, KEEPER, LIBWORKER}) {
-	// 			br.Worflow = append(br.Worflow, STATUS_RETURNED)
-	// 		}
-	// 	}
+	return []Step{
+		{
+			WorkflowType:  WORKFLOW_BORROW,
+			Status:        STATUS_REQUESTED,
+			ActorRole:     BORROWER,
+			Completed:     true,
+			ActionDate:    prt,
+			NextStepIndex: []int{1},
+			RelatedRoles: []string{
+				MASTER, BORROWER, LIBWORKER, KEEPER,
+			},
+		},
+		{
+			WorkflowType:  WORKFLOW_BORROW,
+			Status:        STATUS_CONFIRMED,
+			ActorRole:     LIBWORKER,
+			Completed:     false,
+			ActionDate:    0,
+			NextStepIndex: []int{2},
+			RelatedRoles: []string{
+				MASTER, BORROWER, LIBWORKER, KEEPER,
+			},
+		},
+		{
+			WorkflowType:  WORKFLOW_BORROW,
+			Status:        STATUS_DELIVIED,
+			ActorRole:     BORROWER,
+			Completed:     false,
+			ActionDate:    0,
+			NextStepIndex: []int{3, 5},
+			RelatedRoles: []string{
+				MASTER, BORROWER, LIBWORKER,
+			},
+		},
+		{
+			WorkflowType:  WORKFLOW_RENEW,
+			Status:        STATUS_RENEW_REQUESTED,
+			ActorRole:     BORROWER,
+			Completed:     false,
+			ActionDate:    0,
+			NextStepIndex: []int{4},
+			RelatedRoles: []string{
+				MASTER, BORROWER, LIBWORKER,
+			},
+		},
+		{
+			WorkflowType:  WORKFLOW_RENEW,
+			Status:        STATUS_RENEW_CONFIRMED,
+			ActorRole:     LIBWORKER,
+			Completed:     false,
+			ActionDate:    0,
+			NextStepIndex: []int{5},
+			RelatedRoles: []string{
+				MASTER, BORROWER, LIBWORKER,
+			},
+		},
+		{
+			WorkflowType:  WORKFLOW_RETURN,
+			Status:        STATUS_RETURN_REQUESTED,
+			ActorRole:     BORROWER,
+			Completed:     false,
+			ActionDate:    0,
+			NextStepIndex: []int{6},
+			RelatedRoles: []string{
+				MASTER, BORROWER, LIBWORKER, KEEPER,
+			},
+		},
+		{
+			WorkflowType:  WORKFLOW_RETURN,
+			Status:        STATUS_RETURN_CONFIRMED,
+			ActorRole:     LIBWORKER,
+			Completed:     false,
+			ActionDate:    0,
+			NextStepIndex: []int{7},
+			RelatedRoles: []string{
+				MASTER, BORROWER, LIBWORKER, KEEPER,
+			},
+		},
+		{
+			WorkflowType:  WORKFLOW_RETURN,
+			Status:        STATUS_RETURNED,
+			ActorRole:     KEEPER,
+			Completed:     false,
+			ActionDate:    0,
+			NextStepIndex: nil,
+			RelatedRoles: []string{
+				MASTER, LIBWORKER, KEEPER,
+			},
+		},
+	}
 
 }
 
@@ -502,9 +494,11 @@ func (p *Plugin) _checkConditions(brk *BorrowRequestKey) error {
 			continue
 		}
 
+		status := br.DataOrImage.Worflow[br.DataOrImage.StepIndex].Status
+
 		switch {
-		case br.DataOrImage.Status == STATUS_RETURN_CONFIRMED ||
-			br.DataOrImage.Status == STATUS_RETURNED:
+		case status == STATUS_RETURN_CONFIRMED ||
+			status == STATUS_RETURNED:
 		default:
 			count++
 		}

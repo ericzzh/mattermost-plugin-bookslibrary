@@ -47,11 +47,13 @@ func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
 	env := workflowEnv{}
 
 	env.td = NewTestData()
-	td := env.td
 
-	env.api = td.ApiMockCommon()
-	env.plugin = td.NewMockPlugin()
+	env.api = env.td.ApiMockCommon()
+	env.plugin = env.td.NewMockPlugin()
 	env.plugin.SetAPI(env.api)
+        env.td.EmptyWorkflow = env.plugin._createWFTemplate(GetNowTime())
+
+	td := env.td
 
 	var injectOpt InjectOptions
 
@@ -102,7 +104,7 @@ func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
 		returnedInfo := env.getCurrentPosts()
 		env.realbrUpdPosts = returnedInfo.RealbrUpdPosts
 		env.realbrPosts = returnedInfo.RealbrPost
-env.createdPid = returnedInfo.CreatedPid
+		env.createdPid = returnedInfo.CreatedPid
 	}
 
 	if len(env.realbrPosts) == 0 {
@@ -159,7 +161,7 @@ env.createdPid = returnedInfo.CreatedPid
 }
 
 func TestHandleWorkflow(t *testing.T) {
-	logSwitch = false
+	logSwitch = true
 	_ = fmt.Println
 
 	env := newWorkflowEnv()
@@ -189,15 +191,18 @@ func TestHandleWorkflow(t *testing.T) {
 
 	t.Run("normal_borrow_workflow", func(t *testing.T) {
 
+		var master Borrow
+
+		json.Unmarshal([]byte(env.realbrUpdPosts[env.td.BorChannelId].Message), &master)
+		masterBrq := master.DataOrImage
+                wf := plugin._createWFTemplate(masterBrq.Worflow[masterBrq.StepIndex].ActionDate)
+
 		testWorkflow := []testData{
 			{
 				WorkflowRequest{
-					MasterPostKey:   createdPid[td.BorChannelId],
-					ActUser:         worker,
-					CurrentWorkflow: WORKFLOW_BORROW,
-					MoveToWorkflow:  WORKFLOW_BORROW,
-					CurrentStatus:   STATUS_REQUESTED,
-					MoveToStatus:    STATUS_CONFIRMED,
+					MasterPostKey: createdPid[td.BorChannelId],
+					ActorUser:     worker,
+					NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 				},
 				[]testResult{
 					{
@@ -205,18 +210,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.BorChannelId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ConfirmDate:  1,
-							WorkflowType: WORKFLOW_BORROW,
-							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
-							LastStatus:   STATUS_REQUESTED,
-							Status:       STATUS_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_BORROW,
-									NextStatus:       STATUS_DELIVIED,
-								},
-							},
-							ActUsers: []string{td.BorrowUser},
+							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -231,18 +226,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.BorId_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ConfirmDate:  1,
-							WorkflowType: WORKFLOW_BORROW,
-							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
-							LastStatus:   STATUS_REQUESTED,
-							Status:       STATUS_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_BORROW,
-									NextStatus:       STATUS_DELIVIED,
-								},
-							},
-							ActUsers: []string{td.BorrowUser},
+							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -255,18 +240,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    worker_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ConfirmDate:  1,
-							WorkflowType: WORKFLOW_BORROW,
-							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
-							LastStatus:   STATUS_REQUESTED,
-							Status:       STATUS_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_BORROW,
-									NextStatus:       STATUS_DELIVIED,
-								},
-							},
-							ActUsers: []string{td.BorrowUser},
+							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -281,18 +256,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.Keeper1Id_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ConfirmDate:  1,
-							WorkflowType: WORKFLOW_BORROW,
-							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
-							LastStatus:   STATUS_REQUESTED,
-							Status:       STATUS_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_REQUESTED,
-								},
-							},
-							ActUsers: []string{},
+							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -306,18 +271,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.Keeper2Id_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ConfirmDate:  1,
-							WorkflowType: WORKFLOW_BORROW,
-							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
-							LastStatus:   STATUS_REQUESTED,
-							Status:       STATUS_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_REQUESTED,
-								},
-							},
-							ActUsers: []string{},
+							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -330,12 +285,9 @@ func TestHandleWorkflow(t *testing.T) {
 			},
 			{
 				WorkflowRequest{
-					MasterPostKey:   createdPid[td.BorChannelId],
-					ActUser:         worker,
-					CurrentWorkflow: WORKFLOW_BORROW,
-					MoveToWorkflow:  WORKFLOW_BORROW,
-					CurrentStatus:   STATUS_CONFIRMED,
-					MoveToStatus:    STATUS_DELIVIED,
+					MasterPostKey: createdPid[td.BorChannelId],
+					ActorUser:     td.BorrowUser,
+					NextStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 				},
 				[]testResult{
 					{
@@ -343,22 +295,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.BorChannelId,
 						notifiy: true,
 						brq: BorrowRequest{
-							DeliveryDate: 1,
-							WorkflowType: WORKFLOW_BORROW,
-							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
-							LastStatus:   STATUS_CONFIRMED,
-							Status:       STATUS_DELIVIED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RENEW,
-									NextStatus:       STATUS_RENEW_REQUESTED,
-								},
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_REQUESTED,
-								},
-							},
-							ActUsers: []string{td.BorrowUser},
+							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -373,22 +311,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.BorId_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							DeliveryDate: 1,
-							WorkflowType: WORKFLOW_BORROW,
-							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
-							LastStatus:   STATUS_CONFIRMED,
-							Status:       STATUS_DELIVIED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RENEW,
-									NextStatus:       STATUS_RENEW_REQUESTED,
-								},
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_REQUESTED,
-								},
-							},
-							ActUsers: []string{td.BorrowUser},
+							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -401,22 +325,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    worker_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							DeliveryDate: 1,
-							WorkflowType: WORKFLOW_BORROW,
-							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED, STATUS_DELIVIED},
-							LastStatus:   STATUS_CONFIRMED,
-							Status:       STATUS_DELIVIED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RENEW,
-									NextStatus:       STATUS_RENEW_REQUESTED,
-								},
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_REQUESTED,
-								},
-							},
-							ActUsers: []string{td.BorrowUser},
+							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -430,22 +340,13 @@ func TestHandleWorkflow(t *testing.T) {
 						role: KEEPER,
 						chid: td.Keeper1Id_botId,
 						brq: BorrowRequest{
-							WorkflowType: WORKFLOW_BORROW,
-							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
-							LastStatus:   STATUS_REQUESTED,
-							Status:       STATUS_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_REQUESTED,
-								},
-							},
-							ActUsers: []string{},
+							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
 								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_CONFIRMED,
+								"#STATUS_EQ_" + STATUS_DELIVIED,
 							},
 						},
 					},
@@ -453,34 +354,22 @@ func TestHandleWorkflow(t *testing.T) {
 						role: KEEPER,
 						chid: td.Keeper2Id_botId,
 						brq: BorrowRequest{
-							WorkflowType: WORKFLOW_BORROW,
-							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
-							LastStatus:   STATUS_REQUESTED,
-							Status:       STATUS_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_REQUESTED,
-								},
-							},
-							ActUsers: []string{},
+							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
 								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_CONFIRMED,
+								"#STATUS_EQ_" + STATUS_DELIVIED,
 							},
 						},
 					},
 				},
 			}, {
 				WorkflowRequest{
-					MasterPostKey:   createdPid[td.BorChannelId],
-					ActUser:         worker,
-					CurrentWorkflow: WORKFLOW_BORROW,
-					MoveToWorkflow:  WORKFLOW_RENEW,
-					CurrentStatus:   STATUS_DELIVIED,
-					MoveToStatus:    STATUS_RENEW_REQUESTED,
+					MasterPostKey: createdPid[td.BorChannelId],
+					ActorUser:     td.BorrowUser,
+					NextStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 				},
 				[]testResult{
 					{
@@ -488,18 +377,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.BorChannelId,
 						notifiy: true,
 						brq: BorrowRequest{
-							RenewReqDate: 1,
-							WorkflowType: WORKFLOW_RENEW,
-							Worflow:      []string{STATUS_RENEW_REQUESTED, STATUS_RENEW_CONFIRMED},
-							LastStatus:   STATUS_DELIVIED,
-							Status:       STATUS_RENEW_REQUESTED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RENEW,
-									NextStatus:       STATUS_RENEW_CONFIRMED,
-								},
-							},
-							ActUsers: []string{worker},
+							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -514,18 +393,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.BorId_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							RenewReqDate: 1,
-							WorkflowType: WORKFLOW_RENEW,
-							Worflow:      []string{STATUS_RENEW_REQUESTED, STATUS_RENEW_CONFIRMED},
-							LastStatus:   STATUS_DELIVIED,
-							Status:       STATUS_RENEW_REQUESTED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RENEW,
-									NextStatus:       STATUS_RENEW_CONFIRMED,
-								},
-							},
-							ActUsers: []string{worker},
+							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -538,18 +407,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    worker_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							RenewReqDate: 1,
-							WorkflowType: WORKFLOW_RENEW,
-							Worflow:      []string{STATUS_RENEW_REQUESTED, STATUS_RENEW_CONFIRMED},
-							LastStatus:   STATUS_DELIVIED,
-							Status:       STATUS_RENEW_REQUESTED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RENEW,
-									NextStatus:       STATUS_RENEW_CONFIRMED,
-								},
-							},
-							ActUsers: []string{worker},
+							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -563,22 +422,13 @@ func TestHandleWorkflow(t *testing.T) {
 						role: KEEPER,
 						chid: td.Keeper1Id_botId,
 						brq: BorrowRequest{
-							WorkflowType: WORKFLOW_BORROW,
-							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
-							LastStatus:   STATUS_REQUESTED,
-							Status:       STATUS_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_REQUESTED,
-								},
-							},
-							ActUsers: []string{},
+							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
 								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_CONFIRMED,
+								"#STATUS_EQ_" + STATUS_RENEW_REQUESTED,
 							},
 						},
 					},
@@ -586,34 +436,22 @@ func TestHandleWorkflow(t *testing.T) {
 						role: KEEPER,
 						chid: td.Keeper2Id_botId,
 						brq: BorrowRequest{
-							WorkflowType: WORKFLOW_BORROW,
-							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
-							LastStatus:   STATUS_REQUESTED,
-							Status:       STATUS_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_REQUESTED,
-								},
-							},
-							ActUsers: []string{},
+							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
 								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_CONFIRMED,
+								"#STATUS_EQ_" + STATUS_RENEW_REQUESTED,
 							},
 						},
 					},
 				},
 			}, {
 				WorkflowRequest{
-					MasterPostKey:   createdPid[td.BorChannelId],
-					ActUser:         worker,
-					CurrentWorkflow: WORKFLOW_RENEW,
-					MoveToWorkflow:  WORKFLOW_RENEW,
-					CurrentStatus:   STATUS_RENEW_REQUESTED,
-					MoveToStatus:    STATUS_RENEW_CONFIRMED,
+					MasterPostKey: createdPid[td.BorChannelId],
+					ActorUser:     worker,
+					NextStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 				},
 				[]testResult{
 					{
@@ -621,18 +459,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.BorChannelId,
 						notifiy: true,
 						brq: BorrowRequest{
-							RenewConfDate: 1,
-							WorkflowType:  WORKFLOW_RENEW,
-							Worflow:       []string{STATUS_RENEW_REQUESTED, STATUS_RENEW_CONFIRMED},
-							LastStatus:    STATUS_RENEW_REQUESTED,
-							Status:        STATUS_RENEW_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_REQUESTED,
-								},
-							},
-							ActUsers: []string{td.BorrowUser},
+							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -647,18 +475,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.BorId_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							RenewConfDate: 1,
-							WorkflowType:  WORKFLOW_RENEW,
-							Worflow:       []string{STATUS_RENEW_REQUESTED, STATUS_RENEW_CONFIRMED},
-							LastStatus:    STATUS_RENEW_REQUESTED,
-							Status:        STATUS_RENEW_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_REQUESTED,
-								},
-							},
-							ActUsers: []string{td.BorrowUser},
+							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -671,18 +489,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    worker_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							RenewConfDate: 1,
-							WorkflowType:  WORKFLOW_RENEW,
-							Worflow:       []string{STATUS_RENEW_REQUESTED, STATUS_RENEW_CONFIRMED},
-							LastStatus:    STATUS_RENEW_REQUESTED,
-							Status:        STATUS_RENEW_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_REQUESTED,
-								},
-							},
-							ActUsers: []string{td.BorrowUser},
+							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -696,22 +504,13 @@ func TestHandleWorkflow(t *testing.T) {
 						role: KEEPER,
 						chid: td.Keeper1Id_botId,
 						brq: BorrowRequest{
-							WorkflowType: WORKFLOW_BORROW,
-							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
-							LastStatus:   STATUS_REQUESTED,
-							Status:       STATUS_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_REQUESTED,
-								},
-							},
-							ActUsers: []string{},
+							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
 								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_CONFIRMED,
+								"#STATUS_EQ_" + STATUS_RENEW_CONFIRMED,
 							},
 						},
 					},
@@ -719,34 +518,22 @@ func TestHandleWorkflow(t *testing.T) {
 						role: KEEPER,
 						chid: td.Keeper2Id_botId,
 						brq: BorrowRequest{
-							WorkflowType: WORKFLOW_BORROW,
-							Worflow:      []string{STATUS_REQUESTED, STATUS_CONFIRMED},
-							LastStatus:   STATUS_REQUESTED,
-							Status:       STATUS_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_REQUESTED,
-								},
-							},
-							ActUsers: []string{},
+							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
 								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_CONFIRMED,
+								"#STATUS_EQ_" + STATUS_RENEW_CONFIRMED,
 							},
 						},
 					},
 				},
 			}, {
 				WorkflowRequest{
-					MasterPostKey:   createdPid[td.BorChannelId],
-					ActUser:         worker,
-					CurrentWorkflow: WORKFLOW_RENEW,
-					MoveToWorkflow:  WORKFLOW_RETURN,
-					CurrentStatus:   STATUS_RENEW_CONFIRMED,
-					MoveToStatus:    STATUS_RETURN_REQUESTED,
+					MasterPostKey: createdPid[td.BorChannelId],
+					ActorUser:     td.BorrowUser,
+					NextStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 				},
 				[]testResult{
 					{
@@ -754,18 +541,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.BorChannelId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ReturnReqDate: 1,
-							WorkflowType:  WORKFLOW_RETURN,
-							Worflow:       []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
-							LastStatus:    STATUS_RENEW_CONFIRMED,
-							Status:        STATUS_RETURN_REQUESTED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_CONFIRMED,
-								},
-							},
-							ActUsers: []string{worker},
+							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -780,18 +557,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.BorId_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ReturnReqDate: 1,
-							WorkflowType:  WORKFLOW_RETURN,
-							Worflow:       []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED},
-							LastStatus:    STATUS_RENEW_CONFIRMED,
-							Status:        STATUS_RETURN_REQUESTED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_CONFIRMED,
-								},
-							},
-							ActUsers: []string{worker},
+							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -804,18 +571,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    worker_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ReturnReqDate: 1,
-							WorkflowType:  WORKFLOW_RETURN,
-							Worflow:       []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
-							LastStatus:    STATUS_RENEW_CONFIRMED,
-							Status:        STATUS_RETURN_REQUESTED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_CONFIRMED,
-								},
-							},
-							ActUsers: []string{worker},
+							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -830,18 +587,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.Keeper1Id_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ReturnReqDate: 1,
-							WorkflowType:  WORKFLOW_RETURN,
-							Worflow:       []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
-							LastStatus:    STATUS_CONFIRMED,
-							Status:        STATUS_RETURN_REQUESTED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_CONFIRMED,
-								},
-							},
-							ActUsers: []string{worker},
+							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -855,18 +602,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.Keeper2Id_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ReturnReqDate: 1,
-							WorkflowType:  WORKFLOW_RETURN,
-							Worflow:       []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
-							LastStatus:    STATUS_CONFIRMED,
-							Status:        STATUS_RETURN_REQUESTED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURN_CONFIRMED,
-								},
-							},
-							ActUsers: []string{worker},
+							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -878,12 +615,9 @@ func TestHandleWorkflow(t *testing.T) {
 				},
 			}, {
 				WorkflowRequest{
-					MasterPostKey:   createdPid[td.BorChannelId],
-					ActUser:         worker,
-					CurrentWorkflow: WORKFLOW_RETURN,
-					MoveToWorkflow:  WORKFLOW_RETURN,
-					CurrentStatus:   STATUS_RETURN_REQUESTED,
-					MoveToStatus:    STATUS_RETURN_CONFIRMED,
+					MasterPostKey: createdPid[td.BorChannelId],
+					ActorUser:     worker,
+					NextStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 				},
 				[]testResult{
 					{
@@ -891,18 +625,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.BorChannelId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ReturnConfDate: 1,
-							WorkflowType:   WORKFLOW_RETURN,
-							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
-							LastStatus:     STATUS_RETURN_REQUESTED,
-							Status:         STATUS_RETURN_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURNED,
-								},
-							},
-							ActUsers: td.ABook.KeeperUsers,
+							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -917,18 +641,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.BorId_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ReturnConfDate: 1,
-							WorkflowType:   WORKFLOW_RETURN,
-							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED},
-							LastStatus:     STATUS_RETURN_REQUESTED,
-							Status:         STATUS_RETURN_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURNED,
-								},
-							},
-							ActUsers: []string{},
+							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -941,18 +655,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    worker_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ReturnConfDate: 1,
-							WorkflowType:   WORKFLOW_RETURN,
-							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
-							LastStatus:     STATUS_RETURN_REQUESTED,
-							Status:         STATUS_RETURN_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURNED,
-								},
-							},
-							ActUsers: td.ABook.KeeperUsers,
+							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -967,18 +671,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.Keeper1Id_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ReturnConfDate: 1,
-							WorkflowType:   WORKFLOW_RETURN,
-							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
-							LastStatus:     STATUS_RETURN_REQUESTED,
-							Status:         STATUS_RETURN_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURNED,
-								},
-							},
-							ActUsers: td.ABook.KeeperUsers,
+							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -992,18 +686,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.Keeper2Id_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ReturnConfDate: 1,
-							WorkflowType:   WORKFLOW_RETURN,
-							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
-							LastStatus:     STATUS_RETURN_REQUESTED,
-							Status:         STATUS_RETURN_CONFIRMED,
-							Next: []Next{
-								{
-									NextWorkFlowType: WORKFLOW_RETURN,
-									NextStatus:       STATUS_RETURNED,
-								},
-							},
-							ActUsers: td.ABook.KeeperUsers,
+							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -1015,12 +699,9 @@ func TestHandleWorkflow(t *testing.T) {
 				},
 			}, {
 				WorkflowRequest{
-					MasterPostKey:   createdPid[td.BorChannelId],
-					ActUser:         worker,
-					CurrentWorkflow: WORKFLOW_RETURN,
-					MoveToWorkflow:  WORKFLOW_RETURN,
-					CurrentStatus:   STATUS_RETURN_CONFIRMED,
-					MoveToStatus:    STATUS_RETURNED,
+					MasterPostKey: createdPid[td.BorChannelId],
+					ActorUser:     td.ABook.KeeperUsers[0],
+					NextStepIndex: _getIndexByStatus(STATUS_RETURNED, wf),
 				},
 				[]testResult{
 					{
@@ -1028,13 +709,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.BorChannelId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ReturnDelvDate: 1,
-							WorkflowType:   WORKFLOW_RETURN,
-							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
-							LastStatus:     STATUS_RETURN_CONFIRMED,
-							Status:         STATUS_RETURNED,
-							Next:           []Next{},
-							ActUsers:        []string{},
+							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -1048,16 +724,12 @@ func TestHandleWorkflow(t *testing.T) {
 						role: BORROWER,
 						chid: td.BorId_botId,
 						brq: BorrowRequest{
-							WorkflowType: WORKFLOW_RETURN,
-							Worflow:      []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED},
-							LastStatus:   STATUS_RETURN_REQUESTED,
-							Status:       STATUS_RETURN_CONFIRMED,
-							Next:         []Next{},
-							ActUsers:      []string{},
+							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
-								"#STATUS_EQ_" + STATUS_RETURN_CONFIRMED,
+								"#STATUS_EQ_" + STATUS_RETURNED,
 							},
 						},
 					},
@@ -1066,13 +738,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    worker_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ReturnDelvDate: 1,
-							WorkflowType:   WORKFLOW_RETURN,
-							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
-							LastStatus:     STATUS_RETURN_CONFIRMED,
-							Status:         STATUS_RETURNED,
-							Next:           []Next{},
-							ActUsers:        []string{},
+							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
 								"#BORROWERUSER_EQ_" + td.BorrowUser,
 								"#LIBWORKERUSER_EQ_" + worker,
@@ -1087,13 +754,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.Keeper1Id_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ReturnDelvDate: 1,
-							WorkflowType:   WORKFLOW_RETURN,
-							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
-							LastStatus:     STATUS_RETURN_CONFIRMED,
-							Status:         STATUS_RETURNED,
-							Next:           []Next{},
-							ActUsers:        []string{},
+							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -1107,13 +769,8 @@ func TestHandleWorkflow(t *testing.T) {
 						chid:    td.Keeper2Id_botId,
 						notifiy: true,
 						brq: BorrowRequest{
-							ReturnDelvDate: 1,
-							WorkflowType:   WORKFLOW_RETURN,
-							Worflow:        []string{STATUS_RETURN_REQUESTED, STATUS_RETURN_CONFIRMED, STATUS_RETURNED},
-							LastStatus:     STATUS_RETURN_CONFIRMED,
-							Status:         STATUS_RETURNED,
-							Next:           []Next{},
-							ActUsers:        []string{},
+							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
+							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
 								"#LIBWORKERUSER_EQ_" + worker,
 								"#KEEPERUSER_EQ_" + "kpuser1",
@@ -1157,7 +814,15 @@ func TestHandleWorkflow(t *testing.T) {
 			// but this work makes it easy to understand
 			returnedInfo := getCurrentPosts()
 			newPosts := returnedInfo.RealbrUpdPosts
-			for index, test := range step.result {
+
+			// The workflow
+			var master Borrow
+			json.Unmarshal([]byte(newPosts[td.BorChannelId].Message), &master)
+			wf[step.wfr.NextStepIndex].ActionDate =
+				master.DataOrImage.Worflow[master.DataOrImage.StepIndex].ActionDate
+			wf[step.wfr.NextStepIndex].Completed = true
+
+			for _, test := range step.result {
 				oldPost := oldPosts[test.chid]
 				var oldBorrow Borrow
 				json.Unmarshal([]byte(oldPost.Message), &oldBorrow)
@@ -1166,144 +831,45 @@ func TestHandleWorkflow(t *testing.T) {
 				var newBorrow Borrow
 				json.Unmarshal([]byte(newPost.Message), &newBorrow)
 
-				assert.Equalf(t, test.brq.WorkflowType, newBorrow.DataOrImage.WorkflowType,
-					"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. workflow type should be %v",
-					index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, test.brq.WorkflowType)
+				expStep := &wf[test.brq.StepIndex]
+				actStep := &newBorrow.DataOrImage.Worflow[newBorrow.DataOrImage.StepIndex]
 
-				assert.Equalf(t, test.brq.Worflow, newBorrow.DataOrImage.Worflow,
-					"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. workflow should be %v",
-					index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, test.brq.Worflow)
+				assert.Equalf(t, test.brq.StepIndex, newBorrow.DataOrImage.StepIndex,
+					"in step: %v, role: %v", expStep, test.role)
 
-				assert.Equalf(t, test.brq.LastStatus, newBorrow.DataOrImage.LastStatus,
-					"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. last status should be %v",
-					index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, test.brq.LastStatus)
+				assert.Equalf(t, test.brq.LastStepIndex, newBorrow.DataOrImage.LastStepIndex,
+					"in step: %v, role: %v", expStep, test.role)
 
-				assert.Equalf(t, test.brq.Status, newBorrow.DataOrImage.Status,
-					"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. status should be %v",
-					index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, test.brq.Status)
+				assert.GreaterOrEqualf(t, actStep.ActionDate, baseLineTime,
+					"in step: %v, role: %v", expStep, test.role)
 
-				assert.Equalf(t, test.brq.Next, newBorrow.DataOrImage.Next,
-					"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. next should be %v",
-					index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, test.brq.Next)
-
-				assert.Equalf(t, test.brq.ActUsers, newBorrow.DataOrImage.ActUsers,
-					"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. act user should be %v",
-					index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, test.brq.ActUsers)
+				assert.Equalf(t, wf, newBorrow.DataOrImage.Worflow,
+					"in step: %v, role: %v", expStep, test.role)
 
 				assert.Equalf(t, test.brq.Tags, newBorrow.DataOrImage.Tags,
-					"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. tags should be %v",
-					index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, test.brq.Tags)
+					"in step: %v, role: %v", expStep, test.role)
 
-				if test.brq.ConfirmDate != 0 {
-					assert.GreaterOrEqualf(t, newBorrow.DataOrImage.ConfirmDate, baseLineTime,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. Confirmed date should be correct",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
-
-				} else {
-					assert.Equalf(t, oldBorrow.DataOrImage.ConfirmDate, newBorrow.DataOrImage.ConfirmDate,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. Confirmed date should be same",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
-				}
-				if test.brq.DeliveryDate != 0 {
-					assert.GreaterOrEqualf(t, newBorrow.DataOrImage.DeliveryDate, baseLineTime,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. Delivery date should be correct",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
-				} else {
-					assert.Equalf(t, oldBorrow.DataOrImage.DeliveryDate, newBorrow.DataOrImage.DeliveryDate,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. Delivery date should be same",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
-				}
-				if test.brq.RenewReqDate != 0 {
-					assert.GreaterOrEqualf(t, newBorrow.DataOrImage.RenewReqDate, baseLineTime,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. Renew requested date should be correct",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
-				} else {
-					assert.Equalf(t, oldBorrow.DataOrImage.RenewReqDate, newBorrow.DataOrImage.RenewReqDate,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. Renew requested date should be same",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
-				}
-				if test.brq.RenewConfDate != 0 {
-					assert.GreaterOrEqualf(t, newBorrow.DataOrImage.RenewConfDate, baseLineTime,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. Renew confirmed date should be correct",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
-				} else {
-					assert.Equalf(t, oldBorrow.DataOrImage.RenewConfDate, newBorrow.DataOrImage.RenewConfDate,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. Renew confirmed date should be same",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
-				}
-				if test.brq.ReturnReqDate != 0 {
-					assert.GreaterOrEqualf(t, newBorrow.DataOrImage.ReturnReqDate, baseLineTime,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. Return requested date should be correct",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
-				} else {
-					assert.Equalf(t, oldBorrow.DataOrImage.ReturnReqDate, newBorrow.DataOrImage.ReturnReqDate,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. Return requested date should be same",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
-				}
-				if test.brq.ReturnConfDate != 0 {
-					assert.GreaterOrEqualf(t, newBorrow.DataOrImage.ReturnConfDate, baseLineTime,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. Return confirmed date should be correct",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
-				} else {
-					assert.Equalf(t, oldBorrow.DataOrImage.ReturnConfDate, newBorrow.DataOrImage.ReturnConfDate,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. Return confirmed date should be same",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
-				}
-				if test.brq.ReturnDelvDate != 0 {
-					assert.GreaterOrEqualf(t, newBorrow.DataOrImage.ReturnDelvDate, baseLineTime,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. Returned date should be correct",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
-				} else {
-					assert.Equalf(t, oldBorrow.DataOrImage.ReturnDelvDate, newBorrow.DataOrImage.ReturnDelvDate,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. Returned date should be same",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
-				}
-
-				oldBorrow.DataOrImage.ConfirmDate = 0
-				newBorrow.DataOrImage.ConfirmDate = 0
-				oldBorrow.DataOrImage.DeliveryDate = 0
-				newBorrow.DataOrImage.DeliveryDate = 0
-				oldBorrow.DataOrImage.RenewReqDate = 0
-				newBorrow.DataOrImage.RenewReqDate = 0
-				oldBorrow.DataOrImage.RenewConfDate = 0
-				newBorrow.DataOrImage.RenewConfDate = 0
-				oldBorrow.DataOrImage.ReturnReqDate = 0
-				newBorrow.DataOrImage.ReturnReqDate = 0
-				oldBorrow.DataOrImage.ReturnConfDate = 0
-				newBorrow.DataOrImage.ReturnConfDate = 0
-				oldBorrow.DataOrImage.ReturnDelvDate = 0
-				newBorrow.DataOrImage.ReturnDelvDate = 0
-				oldBorrow.DataOrImage.WorkflowType = ""
-				newBorrow.DataOrImage.WorkflowType = ""
-				oldBorrow.DataOrImage.Worflow = []string{}
-				newBorrow.DataOrImage.Worflow = []string{}
-				oldBorrow.DataOrImage.LastStatus = ""
-				newBorrow.DataOrImage.LastStatus = ""
-				oldBorrow.DataOrImage.Status = ""
-				newBorrow.DataOrImage.Status = ""
-				oldBorrow.DataOrImage.Next = nil
-				newBorrow.DataOrImage.Next = nil
-				oldBorrow.DataOrImage.ActUsers = nil
-				newBorrow.DataOrImage.ActUsers = nil
-				oldBorrow.DataOrImage.Tags = nil
+				newBorrow.DataOrImage.Worflow = nil
+				oldBorrow.DataOrImage.Worflow = nil
+				newBorrow.DataOrImage.StepIndex = -1
+				oldBorrow.DataOrImage.StepIndex = -1
+				newBorrow.DataOrImage.LastStepIndex = -1
+				oldBorrow.DataOrImage.LastStepIndex = -1
 				newBorrow.DataOrImage.Tags = nil
+				oldBorrow.DataOrImage.Tags = nil
 
 				assert.Equalf(t, oldBorrow, newBorrow,
-					"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v.the rest fields should not be changed",
-					index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role)
+					"in step: %v", expStep)
 
 				if test.notifiy {
-					assert.Containsf(t, env.realNotifyThreads[test.chid].Message, step.wfr.MoveToStatus,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. notification should contians: %v",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, step.wfr.MoveToStatus)
-					assert.Containsf(t, env.realNotifyThreads[test.chid].Message, step.wfr.ActUser,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. notification should contians: %v",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, step.wfr.ActUser)
+					assert.Containsf(t, env.realNotifyThreads[test.chid].Message, expStep.Status,
+						"in step: %v, role: %v", expStep, test.role)
+					assert.Containsf(t, env.realNotifyThreads[test.chid].Message, _getUserByRole(expStep.ActorRole, &td, worker),
+						"in step: %v, role: %v", expStep, test.role)
 				} else {
 					_, ok := env.realNotifyThreads[test.chid]
 					assert.Equalf(t, false, ok,
-						"index: %v, currentWorkflow: %v, moveToStatus: %v, role: %v. should not have notification ",
-						index, step.wfr.CurrentWorkflow, step.wfr.MoveToStatus, test.role, step.wfr.ActUser)
+						"in step: %v, role: %v", expStep, test.role)
 				}
 
 			}
@@ -1345,12 +911,9 @@ func TestLock(t *testing.T) {
 	go func() {
 
 		req := WorkflowRequest{
-			MasterPostKey:   createdPid[td.BorChannelId],
-			ActUser:         worker,
-			CurrentWorkflow: WORKFLOW_BORROW,
-			MoveToWorkflow:  WORKFLOW_BORROW,
-			CurrentStatus:   STATUS_REQUESTED,
-			MoveToStatus:    STATUS_CONFIRMED,
+			MasterPostKey: createdPid[td.BorChannelId],
+			ActorUser:     worker,
+			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
 		}
 
 		wfrJson, _ := json.Marshal(req)
@@ -1366,12 +929,9 @@ func TestLock(t *testing.T) {
 		<-start
 
 		req := WorkflowRequest{
-			MasterPostKey:   createdPid[td.BorChannelId],
-			ActUser:         worker,
-			CurrentWorkflow: WORKFLOW_BORROW,
-			MoveToWorkflow:  WORKFLOW_BORROW,
-			CurrentStatus:   STATUS_REQUESTED,
-			MoveToStatus:    STATUS_CONFIRMED,
+			MasterPostKey: createdPid[td.BorChannelId],
+			ActorUser:     worker,
+			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
 		}
 
 		wfrJson, _ := json.Marshal(req)
@@ -1393,12 +953,9 @@ func TestLock(t *testing.T) {
 		<-startNew
 
 		req := WorkflowRequest{
-			MasterPostKey:   createdPid[td.BorChannelId],
-			ActUser:         worker,
-			CurrentWorkflow: WORKFLOW_BORROW,
-			MoveToWorkflow:  WORKFLOW_BORROW,
-			CurrentStatus:   STATUS_REQUESTED,
-			MoveToStatus:    STATUS_CONFIRMED,
+			MasterPostKey: createdPid[td.BorChannelId],
+			ActorUser:     worker,
+			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
 		}
 
 		wfrJson, _ := json.Marshal(req)
@@ -1466,12 +1023,9 @@ func TestRollback(t *testing.T) {
 		env.updErrCtrl[test.chid] = true
 
 		req := WorkflowRequest{
-			MasterPostKey:   env.createdPid[td.BorChannelId],
-			ActUser:         env.worker,
-			CurrentWorkflow: WORKFLOW_BORROW,
-			MoveToWorkflow:  WORKFLOW_BORROW,
-			CurrentStatus:   STATUS_REQUESTED,
-			MoveToStatus:    STATUS_CONFIRMED,
+			MasterPostKey: env.createdPid[td.BorChannelId],
+			ActorUser:     env.worker,
+			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
 		}
 
 		wfrJson, _ := json.Marshal(req)
@@ -1523,7 +1077,8 @@ func TestBorrowRestrict(t *testing.T) {
 					br := Borrow{
 						DataOrImage: &BorrowRequest{
 							BorrowerUser: td.BorrowUser,
-							Status:       STATUS_REQUESTED,
+							Worflow:      td.EmptyWorkflow,
+							StepIndex:    _getIndexByStatus(STATUS_REQUESTED, td.EmptyWorkflow),
 						},
 					}
 					brj, _ := json.Marshal(br)
@@ -1537,7 +1092,8 @@ func TestBorrowRestrict(t *testing.T) {
 					br := Borrow{
 						DataOrImage: &BorrowRequest{
 							BorrowerUser: td.BorrowUser,
-							Status:       safe,
+							Worflow:      td.EmptyWorkflow,
+							StepIndex:    _getIndexByStatus(safe, td.EmptyWorkflow),
 						},
 					}
 					brj, _ := json.Marshal(br)
@@ -1578,7 +1134,8 @@ func TestBorrowRestrict(t *testing.T) {
 					br := Borrow{
 						DataOrImage: &BorrowRequest{
 							BorrowerUser: td.BorrowUser,
-							Status:       STATUS_REQUESTED,
+							Worflow:      td.EmptyWorkflow,
+							StepIndex:    _getIndexByStatus(STATUS_REQUESTED, td.EmptyWorkflow),
 						},
 					}
 					brj, _ := json.Marshal(br)

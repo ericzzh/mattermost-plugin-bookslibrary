@@ -26,6 +26,35 @@ type Book struct {
 	Tags              []string `json:"tags"`
 }
 
+type BookPublic struct {
+	Id                string            `json:"id"`
+	Name              string            `json:"name"`
+	NameEn            string            `json:"name_en"`
+	Category1         string            `json:"category1"`
+	Category2         string            `json:"category2"`
+	Category3         string            `json:"category3"`
+	Author            string            `json:"author"`
+	AuthorEn          string            `json:"author_en"`
+	Translator        string            `json:"translator"`
+	TranslatorEn      string            `json:"translator_en"`
+	Publisher         string            `json:"publisher"`
+	PublisherEn       string            `json:"publisher_en"`
+	PublishDate       string            `json:"publish_date"`
+	Intro             string            `json:"introduction"`
+	BookIndex         string            `json:"book_index"`
+	LibworkerUsers    []string          `json:"libworker_users"`
+	LibworkerNames    []string          `json:"libworker_names"`
+	IsAllowedToBorrow bool              `json:"isAllowedToBorrow"`
+	Tags              []string          `json:"tags"`
+	Relations         map[string]string `json:"relations"`
+}
+
+type BookPrivate struct{
+	Id                string            `json:"id"`
+	Name              string            `json:"name"`
+	Relations         map[string]string `json:"relations"`
+}
+
 const (
 	MASTER    = "MASTER"
 	BORROWER  = "BORROWER"
@@ -56,12 +85,9 @@ type BorrowRequestKey struct {
 }
 
 type WorkflowRequest struct {
-	MasterPostKey   string `json:"master_key"`
-	ActUser         string `json:"act_user"`
-	CurrentWorkflow string `json:"current_workflow"`
-	MoveToWorkflow  string `json:"move_to_workflow"`
-	CurrentStatus   string `json:"current_status"`
-	MoveToStatus    string `json:"move_to_status"`
+	MasterPostKey string `json:"master_key"`
+	ActorUser     string `json:"act_user"`
+	NextStepIndex int    `json:"next_step_index"`
 }
 
 //The key role is library worker(libworker). it is the cross-point in the workflow
@@ -72,37 +98,31 @@ type WorkflowRequest struct {
 //every book can assgin multi-workers, but there should be **ONLY ONE** worker be assigned
 //in a borrowing workflow. We use a simple random number(uniform distribution) solution to solve this case.
 //To be more flexible a book are degsined to be able to assgin multi-persons too.
-type BorrowRequest struct {
-	BookPostId     string   `json:"book_post_id"`
-	BookId         string   `json:"book_id"`
-	BookName       string   `json:"book_name"`
-	Author         string   `json:"author"`
-	BorrowerUser   string   `json:"borrower_user"`
-	BorrowerName   string   `json:"borrower_name"`
-	LibworkerUser  string   `json:"libworker_user"`
-	LibworkerName  string   `json:"libworker_name"`
-	KeeperUsers    []string `json:"keeper_users,omitempty"`
-	KeeperNames    []string `json:"keeper_names,omitempty"`
-	RequestDate    int64    `json:"request_date"`
-	ConfirmDate    int64    `json:"confirm_date"`
-	DeliveryDate   int64    `json:"delivery_date"`
-	RenewReqDate   int64    `json:"renew_request_date"`
-	RenewConfDate  int64    `json:"renew_confirm_date"`
-	ReturnReqDate  int64    `json:"return_request_date"`
-	ReturnConfDate int64    `json:"return_confrrm_date"`
-	ReturnDelvDate int64    `json:"return_delivery_date"`
-	WorkflowType   string   `json:"workflow_type"`
-	Worflow        []string `json:"workflow"`
-	LastStatus     string   `json:"last_status"`
-	Status         string   `json:"status"`
-	Next           []Next   `json:"next,omitempty"`
-	ActUsers        []string `json:"act_user,omitempty"`
-	Tags           []string `json:"tags"`
+type Step struct {
+	WorkflowType  string   `json:"workflow_type"`
+	Status        string   `json:"status"`
+	ActorRole     string   `json:"actor_role"`
+	Completed     bool     `json:"completed"`
+	ActionDate    int64    `json:"action_date"`
+	NextStepIndex []int    `json:"next_step_index"`
+	RelatedRoles  []string `json:"related_roles"`
 }
 
-type Next struct {
-	NextWorkFlowType string
-	NextStatus       string
+type BorrowRequest struct {
+	BookPostId    string   `json:"book_post_id"`
+	BookId        string   `json:"book_id"`
+	BookName      string   `json:"book_name"`
+	Author        string   `json:"author"`
+	BorrowerUser  string   `json:"borrower_user"`
+	BorrowerName  string   `json:"borrower_name"`
+	LibworkerUser string   `json:"libworker_user"`
+	LibworkerName string   `json:"libworker_name"`
+	KeeperUsers   []string `json:"keeper_users,omitempty"`
+	KeeperNames   []string `json:"keeper_names,omitempty"`
+	Worflow       []Step   `json:"workflow"`
+	StepIndex     int      `json:"step_index"`
+	LastStepIndex int      `json:"last_step_index"`
+	Tags          []string `json:"tags"`
 }
 
 type Borrow struct {

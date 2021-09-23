@@ -34,6 +34,7 @@ type TestData struct {
 	Worker2Id_botId    string
 	Keeper1Id_botId    string
 	Keeper2Id_botId    string
+        EmptyWorkflow      []Step
 	ApiMockCommon      func() *plugintest.API
 	NewMockPlugin      func() *Plugin
 	MatchPostByChannel func(string) func(*model.Post) bool
@@ -242,7 +243,7 @@ func NewTestData() TestData {
 			team: &model.Team{
 				Id: td.BorTeamId,
 			},
-                        borrowTimes:2,
+			borrowTimes: 2,
 		}
 	}
 
@@ -386,4 +387,45 @@ func GenerateBorrowRequest(td TestData, plugin *Plugin, api *plugintest.API, inj
 
 	}
 
+}
+
+func _getIndexByStatus(status string, workflow []Step) int {
+
+	for i, step := range workflow {
+		if step.Status == status {
+			return i
+		}
+	}
+
+	return -1
+
+}
+
+func _completeStep(status string, workflow []Step) []Step {
+
+	for i := range workflow {
+                stepPtr := &workflow[i]
+		if stepPtr.Status == status {
+			stepPtr.ActionDate = 1
+			stepPtr.Completed = true
+
+			return workflow
+
+		}
+	}
+
+	return nil
+}
+
+func _getUserByRole(role string, td *TestData, worker string) string {
+	switch role {
+	case BORROWER:
+		return td.BorrowUser
+	case LIBWORKER:
+		return worker
+	case KEEPER:
+		return td.ABook.KeeperUsers[0]
+	}
+
+	return ""
 }
