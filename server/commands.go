@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
+	// "strconv"
 	"strings"
 
 	"github.com/mattermost/mattermost-server/v5/model"
@@ -94,7 +94,7 @@ func (p *Plugin) executePostBook(args *model.CommandArgs) *model.CommandResponse
 
 	} else {
 
-		if book_data_bytes, err := json.MarshalIndent(Book{}, "", ""); err != nil {
+		if book_data_bytes, err := json.Marshal(Book{}); err != nil {
 			p.API.LogError("Failed to initialize a book.", "err", err.Error())
 			return &model.CommandResponse{
 				ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL,
@@ -141,7 +141,7 @@ func (p *Plugin) executePostBorrow(args *model.CommandArgs) *model.CommandRespon
 
 	} else {
 
-		if borrow_data_bytes, err := json.MarshalIndent(BorrowRequest{}, "", ""); err != nil {
+		if borrow_data_bytes, err := json.Marshal(BorrowRequest{}); err != nil {
 			p.API.LogError("Failed to initialize a borrow record.", "err", err.Error())
 			return &model.CommandResponse{
 				ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL,
@@ -172,70 +172,73 @@ func (p *Plugin) executePostBorrow(args *model.CommandArgs) *model.CommandRespon
 }
 
 func (p *Plugin) executePostTestBook(args *model.CommandArgs) *model.CommandResponse {
-	argsarr := strings.Fields(args.Command)
-
-	var counts_str string
-	var counts int
-	var err error
-
-	if len(argsarr) > 1 {
-		counts_str = argsarr[1]
-		if counts, err = strconv.Atoi(counts_str); err != nil {
-			p.API.LogError("Failed to convert count to number", "err", err.Error())
-			return &model.CommandResponse{
-				ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL,
-				Text:         "Failed to convert from a book json string.",
-			}
-		}
-
-	} else {
-
-		counts = 100
-
-	}
-
-	for i := 0; i < counts; i++ {
-		var bookDataStr string
-		if book_data_bytes, err := json.MarshalIndent(Book{
-			Name:      fmt.Sprintf("Book-%d", i),
-			Id:        strconv.Itoa(i),
-			Category1: "C1",
-			Category2: "C2",
-			Category3: "C3",
-		}, "", ""); err != nil {
-			p.API.LogError("Failed to initialize a book.", "err", err.Error())
-			return &model.CommandResponse{
-				ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL,
-				Text:         "Failed to initialize a book.",
-			}
-		} else {
-			bookDataStr = string(book_data_bytes)
-		}
-
-		if _, appErr := p.API.CreatePost(&model.Post{
-			UserId:    p.botID,
-			ChannelId: p.booksChannel.Id,
-			Message:   bookDataStr,
-			Type:      "custom_book_type",
-		}); appErr != nil {
-			p.API.LogError("Failed to post a book", "err", appErr.Error())
-			return &model.CommandResponse{
-				ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL,
-				Text:         "Failed to post a book.",
-			}
-		}
-
-		// _ = p.API.SendEphemeralPost(args.UserId, &model.Post{
-		// 	UserId:    p.botID,
-		// 	ChannelId: p.booksChannel.Id,
-		// 	Message:   bookDataStr,
-		// 	Props: model.StringInterface{
-		// 		"type": "custom_book_type",
-		// 	},
-		// })
-	}
+// 	argsarr := strings.Fields(args.Command)
+// 
+// 	var counts_str string
+// 	var counts int
+// 	var err error
+// 
+// 	if len(argsarr) > 1 {
+// 		counts_str = argsarr[1]
+// 		if counts, err = strconv.Atoi(counts_str); err != nil {
+// 			p.API.LogError("Failed to convert count to number", "err", err.Error())
+// 			return &model.CommandResponse{
+// 				ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL,
+// 				Text:         "Failed to convert from a book json string.",
+// 			}
+// 		}
+// 
+// 	} else {
+// 
+// 		counts = 100
+// 
+// 	}
+// 
+// 	for i := 0; i < counts; i++ {
+// 		var bookDataStr string
+// 		if book_data_bytes, err := json.MarshalIndent(Book{
+// 			BookPublic{
+// 				Name:      fmt.Sprintf("Book-%d", i),
+// 				Id:        strconv.Itoa(i),
+// 				Category1: "C1",
+// 				Category2: "C2",
+// 				Category3: "C3",
+// 			},
+// 			BookPrivate{},
+// 		}, "", ""); err != nil {
+// 			p.API.LogError("Failed to initialize a book.", "err", err.Error())
+// 			return &model.CommandResponse{
+// 				ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL,
+// 				Text:         "Failed to initialize a book.",
+// 			}
+// 		} else {
+// 			bookDataStr = string(book_data_bytes)
+// 		}
+// 
+// 		if _, appErr := p.API.CreatePost(&model.Post{
+// 			UserId:    p.botID,
+// 			ChannelId: p.booksChannel.Id,
+// 			Message:   bookDataStr,
+// 			Type:      "custom_book_type",
+// 		}); appErr != nil {
+// 			p.API.LogError("Failed to post a book", "err", appErr.Error())
+// 			return &model.CommandResponse{
+// 				ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL,
+// 				Text:         "Failed to post a book.",
+// 			}
+// 		}
+// 
+// 		// _ = p.API.SendEphemeralPost(args.UserId, &model.Post{
+// 		// 	UserId:    p.botID,
+// 		// 	ChannelId: p.booksChannel.Id,
+// 		// 	Message:   bookDataStr,
+// 		// 	Props: model.StringInterface{
+// 		// 		"type": "custom_book_type",
+// 		// 	},
+// 		// })
+// 	}
 	return &model.CommandResponse{
 		ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL,
-		Text:         "Posted test books.",
+                Text:         "Posted test books.[link](http://localhost:8065/bookslibrary/pl/5wcfjp5jubrid8f58cc171fg7a)",
 	}
 }

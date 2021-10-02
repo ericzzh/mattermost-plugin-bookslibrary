@@ -21,7 +21,7 @@ func TestHandleBorrow(t *testing.T) {
 
 	td := NewTestData()
 
-	bookPostId := td.BookPostId
+	bookPostId := td.BookPostIdPub
 
 	borChannelId := td.BorChannelId
 
@@ -45,16 +45,16 @@ func TestHandleBorrow(t *testing.T) {
 	matchPostById := td.MatchPostById
 
 	t.Run("_makeBorrowRequest", func(t *testing.T) {
-                otherData := otherRequestData{
-                    processTime: GetNowTime(),
-                }
+		otherData := otherRequestData{
+			processTime: GetNowTime(),
+		}
 		api := apiMockCommon()
 		plugin := newMockPlugin()
 		plugin.SetAPI(api)
 
 		br, _ := plugin._makeBorrowRequest(&reqKey, borrowUser, []string{MASTER}, nil, otherData)
-		assert.Equal(t, aBook.Id, br.BookId, "BookId")
-		assert.Equal(t, aBook.Name, br.BookName, "BookName")
+		assert.Equal(t, aBook.BookPublic.Id, br.BookId, "BookId")
+		assert.Equal(t, aBook.BookPublic.Name, br.BookName, "BookName")
 		assert.Equal(t, aBook.Author, br.Author, "Author")
 		assert.Equal(t, borrowUser, br.BorrowerUser, "BorrowerUser")
 		assert.Equal(t, "bookbor", br.BorrowerName, "BorrowerName")
@@ -62,7 +62,6 @@ func TestHandleBorrow(t *testing.T) {
 		assert.Contains(t, aBook.LibworkerNames, br.LibworkerName, "LibworkerName")
 		assert.Equal(t, aBook.KeeperUsers, br.KeeperUsers, "KeeperUsers")
 		assert.Equal(t, aBook.KeeperNames, br.KeeperNames, "KeeperNames")
-
 
 		assert.Equal(t, 0, br.StepIndex, "StepIndex")
 		assert.Equal(t, -1, br.LastStepIndex, "LastStepIndex")
@@ -217,8 +216,8 @@ func TestHandleBorrow(t *testing.T) {
 			role.workflow[0].ActionDate = thisRealBr.DataOrImage.Worflow[0].ActionDate
 			br := &BorrowRequest{
 				BookPostId:    bookPostId,
-				BookId:        aBook.Id,
-				BookName:      aBook.Name,
+				BookId:        aBook.BookPublic.Id,
+				BookName:      aBook.BookPublic.Name,
 				Author:        aBook.Author,
 				BorrowerUser:  role.borrower,
 				BorrowerName:  role.borrowerName,
@@ -240,7 +239,7 @@ func TestHandleBorrow(t *testing.T) {
 				RelationKeys: RelationKeys{},
 			}
 
-			borrowExpJson, _ := json.MarshalIndent(borrowExp, "", "")
+			borrowExpJson, _ := json.Marshal(borrowExp)
 
 			expPost := &model.Post{
 				UserId:    plugin.botID,
@@ -266,7 +265,7 @@ func TestHandleBorrow(t *testing.T) {
 				borrowExp.RelationKeys.Master = createdPid[plugin.borrowChannel.Id]
 			}
 
-			borrowExpJson, _ = json.MarshalIndent(borrowExp, "", "")
+			borrowExpJson, _ = json.Marshal(borrowExp)
 			expPost = &model.Post{
 				Id:        createdPid[role.channelId],
 				UserId:    plugin.botID,
@@ -425,6 +424,7 @@ func TestHandleBorrow(t *testing.T) {
 
 			api.On("SearchPostsInTeam", plugin.team.Id, mock.AnythingOfType("[]*model.SearchParams")).
 				Return([]*model.Post{}, nil)
+			api.On("DeletePost", mock.AnythingOfType("string")).Return(nil)
 
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("POST", "/borrow", bytes.NewReader(reqKeyJson))
@@ -550,7 +550,7 @@ func TestHandleBorrow(t *testing.T) {
 				realbrUpdPosts[realbrPost.ChannelId] = rbp
 			}
 
-			thisBookJson, _ := json.MarshalIndent(thisBook, "", "")
+			thisBookJson, _ := json.Marshal(thisBook)
 
 			api.On("GetPost", thisBookPostId).Return(&model.Post{
 				Message: string(thisBookJson),

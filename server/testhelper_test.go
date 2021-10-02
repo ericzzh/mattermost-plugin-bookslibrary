@@ -5,18 +5,37 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
+	"sync"
+	"testing"
 
 	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/mattermost/mattermost-server/v5/plugin/plugintest"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	// "github.com/stretchr/testify/require"
 )
 
 var logSwitch bool
 
+type mockapiOptons struct {
+	excludeBookUpdAPI     bool
+}
 type TestData struct {
 	ABook              *Book
-	BookPostId         string
+	ABookPub           *BookPublic
+	ABookPri           *BookPrivate
+	ABookInvInjected   *BookInventory
+	ABookInv           *BookInventory
+	BookPostIdPub      string
+	BookPostIdPri      string
+	BookPostIdInv      string
+	BookChIdPub        string
+	BookChIdPri        string
+	BookChIdInv        string
+	BookPidToChid      map[string]string
+	RealBookPostUpd    map[string]*model.Post
+	RealBookPostDel    map[string]string
 	BotId              string
 	BorChannelId       string
 	BorTeamId          string
@@ -34,24 +53,39 @@ type TestData struct {
 	Worker2Id_botId    string
 	Keeper1Id_botId    string
 	Keeper2Id_botId    string
-        EmptyWorkflow      []Step
-	ApiMockCommon      func() *plugintest.API
+	EmptyWorkflow      []Step
+	ApiMockCommon      func(...mockapiOptons) *plugintest.API
 	NewMockPlugin      func() *Plugin
 	MatchPostByChannel func(string) func(*model.Post) bool
 	MatchPostById      func(string) func(*model.Post) bool
+	block0             chan struct{}
+	block1             chan struct{}
+	updateBookErr      bool
 }
 
-func NewTestData() TestData {
+func NewTestData() *TestData {
 	_ = fmt.Printf
-	td := TestData{}
+	td := &TestData{}
 
-	td.BookPostId = model.NewId()
+	td.BookPostIdPub = model.NewId()
+	td.BookPostIdPri = model.NewId()
+	td.BookPostIdInv = model.NewId()
+
+	td.BookChIdPub = model.NewId()
+	td.BookChIdPri = model.NewId()
+	td.BookChIdInv = model.NewId()
+
+	td.BookPidToChid = map[string]string{
+		td.BookPostIdPub: td.BookChIdPub,
+		td.BookPostIdPri: td.BookChIdPri,
+		td.BookPostIdInv: td.BookChIdInv,
+	}
 
 	td.BotId = model.NewId()
 	td.BorChannelId = model.NewId()
 	td.BorTeamId = model.NewId()
 
-	td.ABook = &Book{
+	td.ABookPub = &BookPublic{
 		Id:                "zzh-book-001",
 		Name:              "a test book",
 		NameEn:            "a test book",
@@ -67,16 +101,44 @@ func NewTestData() TestData {
 		PublishDate:       "20200821",
 		LibworkerUsers:    []string{"worker1", "worker2"},
 		LibworkerNames:    []string{"wkname1", "wkname2"},
-		KeeperUsers:       []string{"kpuser1", "kpuser2"},
-		KeeperNames:       []string{"kpname1", "kpname2"},
 		IsAllowedToBorrow: true,
 		Tags:              []string{},
+		Relations: Relations{
+			REL_BOOK_PRIVATE:   td.BookPostIdPri,
+			REL_BOOK_INVENTORY: td.BookPostIdInv,
+		},
 	}
-	td.ABookJson, _ = json.MarshalIndent(td.ABook, "", "")
+
+	td.ABookPri = &BookPrivate{
+		Id:          "zzh-book-001",
+		Name:        "a test book",
+		KeeperUsers: []string{"kpuser1", "kpuser2"},
+		KeeperNames: []string{"kpname1", "kpname2"},
+		Relations: Relations{
+			REL_BOOK_PUBLIC: td.BookPostIdPub,
+		},
+	}
+
+	td.ABookInv = &BookInventory{
+		Id:    "zzh-book-001",
+		Name:  "a test book",
+		Stock: 3,
+		Relations: Relations{
+			REL_BOOK_PUBLIC: td.BookPostIdPub,
+		},
+	}
+
+	td.ABook = &Book{
+		td.ABookPub,
+		td.ABookPri,
+		td.ABookInv,
+		nil,
+	}
+
 	td.BorrowUser = "bor"
 
 	td.ReqKey = BorrowRequestKey{
-		BookPostId:   td.BookPostId,
+		BookPostId:   td.BookPostIdPub,
 		BorrowerUser: td.BorrowUser,
 	}
 	td.ReqKeyJson, _ = json.Marshal(td.ReqKey)
@@ -92,12 +154,12 @@ func NewTestData() TestData {
 	td.Keeper1Id_botId = model.NewId()
 	td.Keeper2Id_botId = model.NewId()
 
-	td.ApiMockCommon = func() *plugintest.API {
+	td.ApiMockCommon = func(options ...mockapiOptons) *plugintest.API {
+		var option mockapiOptons
+		if options != nil {
+			option = options[0]
+		}
 		api := &plugintest.API{}
-
-		api.On("GetPost", td.BookPostId).Return(&model.Post{
-			Message: string(td.ABookJson),
-		}, nil)
 
 		api.On("GetUserByUsername", "bor").Return(&model.User{
 			Id:        td.BorId,
@@ -228,7 +290,126 @@ func NewTestData() TestData {
 					)
 				}
 			})
-		api.On("DeletePost", mock.AnythingOfType("string")).Return(nil)
+		// if option.includeDeleteAnything {
+		// 	api.On("DeletePost", mock.AnythingOfType("string")).Return(nil)
+		// }
+
+		//------------------------------
+		//Books Mock
+		//------------------------------
+		var once sync.Once
+		api.On("GetPost", td.BookPostIdPub).Return(
+			func(id string) *model.Post {
+				bookPubJson, _ := json.Marshal(td.ABookPub)
+				if td.block0 != nil {
+					once.Do(func() {
+						if td.block1 != nil {
+							td.block1 <- struct{}{}
+						}
+						td.block0 <- struct{}{}
+					})
+				}
+				return &model.Post{
+					Id:        td.BookPostIdPub,
+					ChannelId: td.BookChIdPub,
+					Message:   string(bookPubJson),
+				}
+			}, nil)
+
+		api.On("GetPost", td.BookPostIdPri).Return(
+			func(id string) *model.Post {
+				bookPriJson, _ := json.Marshal(td.ABookPri)
+				return &model.Post{
+					Id:        td.BookPostIdPri,
+					ChannelId: td.BookChIdPri,
+					Message:   string(bookPriJson),
+				}
+			}, nil)
+
+		api.On("GetPost", td.BookPostIdInv).Return(
+			func(id string) *model.Post {
+
+				bookInvJson, _ := json.Marshal(td.ABookInv)
+
+				if td.ABookInvInjected != nil {
+					bookInvJsonInj, _ := json.Marshal(td.ABookInvInjected)
+					return &model.Post{
+						Id:        td.BookPostIdInv,
+						ChannelId: td.BookChIdInv,
+						Message:   string(bookInvJsonInj),
+					}
+				}
+
+				return &model.Post{
+					Id:        td.BookPostIdInv,
+					ChannelId: td.BookChIdInv,
+					Message:   string(bookInvJson),
+				}
+			}, nil)
+		if !option.excludeBookUpdAPI {
+
+			pluginConfig := td.NewMockPlugin()
+			td.RealBookPostUpd = map[string]*model.Post{}
+
+			for _, ch := range []struct {
+				pid  string
+				chid string
+			}{
+				{
+					td.BookPostIdPub,
+					pluginConfig.booksChannel.Id,
+				},
+				{
+
+					td.BookPostIdPri,
+					pluginConfig.booksPriChannel.Id,
+				},
+				{
+					td.BookPostIdInv,
+					pluginConfig.booksInvChannel.Id,
+				},
+			} {
+				api.On("CreatePost", mock.MatchedBy(td.MatchPostByChannel(ch.chid))).Return(
+					func(post *model.Post) *model.Post {
+						return &model.Post{
+							Id: ch.pid,
+						}
+					}, nil)
+				api.On("UpdatePost", mock.MatchedBy(td.MatchPostByChannel(ch.chid))).Return(
+					func(post *model.Post) *model.Post {
+						chid := td.BookPidToChid[post.Id]
+						td.RealBookPostUpd[chid] = post
+						switch chid {
+						case td.BookChIdPub:
+							pub := &BookPublic{}
+							json.Unmarshal([]byte(post.Message), pub)
+							td.ABookPub = pub
+						case td.BookChIdPri:
+							pri := &BookPrivate{}
+							json.Unmarshal([]byte(post.Message), pri)
+							td.ABookPri = pri
+						case td.BookChIdInv:
+							inv := &BookInventory{}
+							json.Unmarshal([]byte(post.Message), inv)
+							td.ABookInv = inv
+						}
+
+						return &model.Post{}
+					}, func(post *model.Post) *model.AppError {
+						if td.updateBookErr {
+							return &model.AppError{}
+						}
+						return nil
+					})
+
+				//because chid:pid is 1:1, so we can use pid directly
+				api.On("DeletePost", ch.pid).Return(
+					func(id string) *model.AppError {
+						td.RealBookPostDel[td.BookPidToChid[id]] = id
+						return nil
+					})
+			}
+		}
 
 		return api
 
@@ -237,6 +418,15 @@ func NewTestData() TestData {
 	td.NewMockPlugin = func() *Plugin {
 		return &Plugin{
 			botID: td.BotId,
+			booksChannel: &model.Channel{
+				Id: td.BookChIdPub,
+			},
+			booksPriChannel: &model.Channel{
+				Id: td.BookChIdPri,
+			},
+			booksInvChannel: &model.Channel{
+				Id: td.BookChIdInv,
+			},
 			borrowChannel: &model.Channel{
 				Id: td.BorChannelId,
 			},
@@ -267,13 +457,14 @@ type InjectOptions struct {
 }
 
 type ReturnedInfo struct {
-	RealbrPost     map[string]*model.Post
-	RealbrUpdPosts map[string]*model.Post
-	CreatedPid     map[string]string
-	HttpResponse   *httptest.ResponseRecorder
+	RealbrPost       map[string]*model.Post
+	RealbrUpdPosts   map[string]*model.Post
+	CreatedPid       map[string]string
+	ChidByCreatedPid map[string]string
+	HttpResponse     *httptest.ResponseRecorder
 }
 
-func GenerateBorrowRequest(td TestData, plugin *Plugin, api *plugintest.API, injects ...InjectOptions) func() ReturnedInfo {
+func GenerateBorrowRequest(td *TestData, plugin *Plugin, api *plugintest.API, injects ...InjectOptions) func() ReturnedInfo {
 
 	var injectOpt InjectOptions
 	if injects != nil {
@@ -302,6 +493,11 @@ func GenerateBorrowRequest(td TestData, plugin *Plugin, api *plugintest.API, inj
 		td.Worker2Id_botId:      model.NewId(),
 		td.Keeper1Id_botId:      model.NewId(),
 		td.Keeper2Id_botId:      model.NewId(),
+	}
+
+	chidByCreatedPid := map[string]string{}
+	for chid, pid := range createdPid {
+		chidByCreatedPid[pid] = chid
 	}
 
 	api.On("CreatePost", mock.MatchedBy(matchPost(plugin.borrowChannel.Id))).Run(runfn).
@@ -379,10 +575,11 @@ func GenerateBorrowRequest(td TestData, plugin *Plugin, api *plugintest.API, inj
 	return func() ReturnedInfo {
 
 		return ReturnedInfo{
-			RealbrPost:     realbrPosts,
-			RealbrUpdPosts: realbrUpdPosts,
-			CreatedPid:     createdPid,
-			HttpResponse:   w,
+			RealbrPost:       realbrPosts,
+			RealbrUpdPosts:   realbrUpdPosts,
+			CreatedPid:       createdPid,
+			ChidByCreatedPid: chidByCreatedPid,
+			HttpResponse:     w,
 		}
 
 	}
@@ -404,7 +601,7 @@ func _getIndexByStatus(status string, workflow []Step) int {
 func _completeStep(status string, workflow []Step) []Step {
 
 	for i := range workflow {
-                stepPtr := &workflow[i]
+		stepPtr := &workflow[i]
 		if stepPtr.Status == status {
 			stepPtr.ActionDate = 1
 			stepPtr.Completed = true
@@ -428,4 +625,27 @@ func _getUserByRole(role string, td *TestData, worker string) string {
 	}
 
 	return ""
+}
+
+func _checkBookMessageResult(t *testing.T, w *httptest.ResponseRecorder, ifErr bool, expMessages map[string]BooksMessage) {
+	result := w.Result()
+	var resultObj *Result
+	json.NewDecoder(result.Body).Decode(&resultObj)
+	require.NotEqual(t, result.StatusCode, 404, "should find this service")
+	if ifErr {
+		require.NotEmpty(t, resultObj.Error, "should be error")
+	} else {
+		require.Empty(t, resultObj.Error, "should not be error")
+	}
+
+	//check result
+	for k, msg := range expMessages {
+		bodyJson, ok := resultObj.Messages[k]
+		require.Equalf(t, ok, true, "book id %v should exist in result.", k)
+		var body BooksMessage
+		json.Unmarshal([]byte(bodyJson), &body)
+		assert.Equalf(t, body.PostId, msg.PostId, "public post id.")
+		assert.Equalf(t, body.Status, msg.Status, "status.")
+	}
+
 }

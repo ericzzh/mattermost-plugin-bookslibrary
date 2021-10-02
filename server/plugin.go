@@ -24,9 +24,11 @@ type Plugin struct {
 
 	borrowChannel *model.Channel
 
-	booksChannel *model.Channel
+	booksChannel    *model.Channel
+	booksPriChannel *model.Channel
+	booksInvChannel *model.Channel
 
-        borrowTimes int
+	borrowTimes int
 }
 
 // ServeHTTP demonstrates a plugin that handles HTTP requests by greeting the world.
@@ -36,6 +38,8 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 		p.handleBorrowRequest(c, w, r)
 	case "/workflow":
 		p.handleWorkflowRequest(c, w, r)
+	case "/books":
+		p.handleBooksRequest(c, w, r)
 	default:
 		http.NotFound(w, r)
 	}

@@ -3,56 +3,75 @@ package main
 import "github.com/pkg/errors"
 
 type Book struct {
-	Id                string   `json:"id"`
-	Name              string   `json:"name"`
-	NameEn            string   `json:"name_en"`
-	Category1         string   `json:"category1"`
-	Category2         string   `json:"category2"`
-	Category3         string   `json:"category3"`
-	Author            string   `json:"author"`
-	AuthorEn          string   `json:"author_en"`
-	Translator        string   `json:"translator"`
-	TranslatorEn      string   `json:"translator_en"`
-	Publisher         string   `json:"publisher"`
-	PublisherEn       string   `json:"publisher_en"`
-	PublishDate       string   `json:"publish_date"`
-	Intro             string   `json:"introduction"`
-	BookIndex         string   `json:"book_index"`
-	LibworkerUsers    []string `json:"libworker_users"`
-	LibworkerNames    []string `json:"libworker_names"`
-	KeeperUsers       []string `json:"keeper_users"`
-	KeeperNames       []string `json:"keeper_names"`
-	IsAllowedToBorrow bool     `json:"isAllowedToBorrow"`
-	Tags              []string `json:"tags"`
+	*BookPublic
+	*BookPrivate
+	*BookInventory
+	*Upload
 }
 
+type Books []Book
+
+const (
+	REL_BOOK_PUBLIC    = "public"
+	REL_BOOK_PRIVATE   = "private"
+	REL_BOOK_INVENTORY = "inventory"
+)
+
+type Relations map[string]string
 type BookPublic struct {
-	Id                string            `json:"id"`
-	Name              string            `json:"name"`
-	NameEn            string            `json:"name_en"`
-	Category1         string            `json:"category1"`
-	Category2         string            `json:"category2"`
-	Category3         string            `json:"category3"`
-	Author            string            `json:"author"`
-	AuthorEn          string            `json:"author_en"`
-	Translator        string            `json:"translator"`
-	TranslatorEn      string            `json:"translator_en"`
-	Publisher         string            `json:"publisher"`
-	PublisherEn       string            `json:"publisher_en"`
-	PublishDate       string            `json:"publish_date"`
-	Intro             string            `json:"introduction"`
-	BookIndex         string            `json:"book_index"`
-	LibworkerUsers    []string          `json:"libworker_users"`
-	LibworkerNames    []string          `json:"libworker_names"`
-	IsAllowedToBorrow bool              `json:"isAllowedToBorrow"`
-	Tags              []string          `json:"tags"`
-	Relations         map[string]string `json:"relations"`
+	Id                string    `json:"id_pub"`
+	Name              string    `json:"name_pub"`
+	NameEn            string    `json:"name_en"`
+	Category1         string    `json:"category1"`
+	Category2         string    `json:"category2"`
+	Category3         string    `json:"category3"`
+	Author            string    `json:"author"`
+	AuthorEn          string    `json:"author_en"`
+	Translator        string    `json:"translator"`
+	TranslatorEn      string    `json:"translator_en"`
+	Publisher         string    `json:"publisher"`
+	PublisherEn       string    `json:"publisher_en"`
+	PublishDate       string    `json:"publish_date"`
+	Intro             string    `json:"introduction"`
+	BookIndex         string    `json:"book_index"`
+	LibworkerUsers    []string  `json:"libworker_users"`
+	LibworkerNames    []string  `json:"libworker_names,omitempty"`
+	IsAllowedToBorrow bool      `json:"isAllowedToBorrow,omitempty"`
+	Tags              []string  `json:"tags,omitempty"`
+	Relations         Relations `json:"relations_pub,omitempty"`
 }
 
-type BookPrivate struct{
-	Id                string            `json:"id"`
-	Name              string            `json:"name"`
-	Relations         map[string]string `json:"relations"`
+type BookPrivate struct {
+	Id          string    `json:"id_pri,omitempty"`
+	Name        string    `json:"name_pri,omitempty"`
+	KeeperUsers []string  `json:"keeper_users"`
+	KeeperNames []string  `json:"keeper_names,omitempty"`
+	Relations   Relations `json:"relations_pri,omitempty"`
+}
+
+type BookInventory struct {
+	Id          string    `json:"id_inv,omitempty"`
+	Name        string    `json:"name_inv,omitempty"`
+	Stock       int       `json:"stock"`
+	TransmitOut int       `json:"transmit_out"`
+	Lending     int       `json:"lending"`
+	TransmitIn  int       `json:"transmit_in"`
+	Relations   Relations `json:"relations_inv,omitempty"`
+}
+
+type Upload struct {
+	Post_id string `json:"post_id"`
+	Delete  bool   `json:"delete"`
+}
+
+const (
+	BOOKS_ACTION_UPLOAD = "UPLOAD"
+)
+
+type BooksRequest struct {
+	Action  string `json:"action"`
+	ActUser string `json:"act_user"`
+	Body    string `json:"body"`
 }
 
 const (
@@ -88,6 +107,7 @@ type WorkflowRequest struct {
 	MasterPostKey string `json:"master_key"`
 	ActorUser     string `json:"act_user"`
 	NextStepIndex int    `json:"next_step_index"`
+        Delete        bool   `json:"delete"`
 }
 
 //The key role is library worker(libworker). it is the cross-point in the workflow
@@ -139,10 +159,27 @@ type RelationKeys struct {
 	Keepers   []string `json:"keepers,omitempty"`
 }
 
+const (
+	BOOK_UPLOAD_ERROR = "error"
+	BOOK_UPLOAD_SUCC  = "ok"
+)
+
+type BooksMessage struct {
+	PostId  string `json:"post_id"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+type Messages map[string]string
+
 type Result struct {
-	Error string `json:"error"`
+	Error    string   `json:"error"`
+	Messages Messages `json:"messages,omitempty"`
 }
 
 var (
 	ErrBorrowingLimited = errors.New("borrowing-book-limited")
+	ErrLocked           = errors.New("record-locked")
+        ErrNotFound         = errors.New("not-found")
+        ErrNoStock          = errors.New("no-stock")
 )

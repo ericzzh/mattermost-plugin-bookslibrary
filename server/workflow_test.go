@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -19,24 +20,37 @@ import (
 )
 
 type workflowEnv struct {
-	td                TestData
-	api               *plugintest.API
-	plugin            *Plugin
-	realbrPosts       map[string]*model.Post
+	td     *TestData
+	api    *plugintest.API
+	plugin *Plugin
+	//created posts, replace previous
+	realbrPosts map[string]*model.Post
+	//updated posts, replace previous
 	realbrUpdPosts    map[string]*model.Post
+	realbrDelPosts    map[string]string
+	realbrDelPostsSeq []string
 	createdPid        map[string]string
+	chidByCreatedPid  map[string]string
 	worker            string
 	worker_botId      string
 	postById          map[string]*model.Post
 	realNotifyThreads map[string]*model.Post
 	getCurrentPosts   func() ReturnedInfo
 	updErrCtrl        map[string]bool
+	injectedOption    *injectOpt
 }
 
 type injectOpt struct {
 	onGetPost     func()
 	ifUpdErrCtrl  bool
 	onSearchPosts func(api *plugintest.API, plugin *Plugin, td *TestData) func()
+	invInject     *BookInventory
+	onGetPostErr  func(id string) *model.AppError
+}
+
+//because some injections need the data generated, so have to make the inject as seperated
+func (env *workflowEnv) injectOption(inj *injectOpt) {
+	env.injectedOption = inj
 }
 
 func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
@@ -47,11 +61,12 @@ func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
 	env := workflowEnv{}
 
 	env.td = NewTestData()
+	env.td.ABookInvInjected = inject.invInject
 
 	env.api = env.td.ApiMockCommon()
 	env.plugin = env.td.NewMockPlugin()
 	env.plugin.SetAPI(env.api)
-        env.td.EmptyWorkflow = env.plugin._createWFTemplate(GetNowTime())
+	env.td.EmptyWorkflow = env.plugin._createWFTemplate(GetNowTime())
 
 	td := env.td
 
@@ -92,7 +107,7 @@ func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
 	}
 
 	if inject.onSearchPosts != nil {
-		injectOpt.searchPosts = inject.onSearchPosts(env.api, env.plugin, &td)
+		injectOpt.searchPosts = inject.onSearchPosts(env.api, env.plugin, td)
 	}
 
 	env.getCurrentPosts = GenerateBorrowRequest(env.td, env.plugin, env.api, injectOpt)
@@ -100,11 +115,13 @@ func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
 		returnedInfo := env.getCurrentPosts()
 		env.realbrPosts = returnedInfo.RealbrPost
 		env.createdPid = returnedInfo.CreatedPid
+		env.chidByCreatedPid = returnedInfo.ChidByCreatedPid
 	} else {
 		returnedInfo := env.getCurrentPosts()
 		env.realbrUpdPosts = returnedInfo.RealbrUpdPosts
 		env.realbrPosts = returnedInfo.RealbrPost
 		env.createdPid = returnedInfo.CreatedPid
+		env.chidByCreatedPid = returnedInfo.ChidByCreatedPid
 	}
 
 	if len(env.realbrPosts) == 0 {
@@ -136,6 +153,9 @@ func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
 			return post.ChannelId == channelId && post.RootId != ""
 		}
 	}
+
+	env.realbrDelPosts = map[string]string{}
+
 	for _, channelId := range []string{
 		td.BorChannelId,
 		td.BorId_botId,
@@ -151,8 +171,23 @@ func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
 				if inject.onGetPost != nil {
 					inject.onGetPost()
 				}
-				return env.postById[id]
-			}, nil)
+				return env.realbrUpdPosts[env.chidByCreatedPid[id]]
+			}, func(id string) *model.AppError {
+				if env.injectedOption != nil {
+					if env.injectedOption.onGetPostErr != nil {
+						return env.injectedOption.onGetPostErr(id)
+					}
+				}
+
+				return nil
+			})
+
+		env.api.On("DeletePost", env.createdPid[channelId]).
+			Return(func(id string) *model.AppError {
+				env.realbrDelPosts[env.chidByCreatedPid[id]] = id
+				env.realbrDelPostsSeq = append(env.realbrDelPostsSeq, id)
+				return nil
+			})
 		env.api.On("CreatePost", mock.MatchedBy(matchThreadByChannel(channelId))).
 			Run(saveNotifiyThread).Return(&model.Post{}, nil)
 	}
@@ -195,7 +230,7 @@ func TestHandleWorkflow(t *testing.T) {
 
 		json.Unmarshal([]byte(env.realbrUpdPosts[env.td.BorChannelId].Message), &master)
 		masterBrq := master.DataOrImage
-                wf := plugin._createWFTemplate(masterBrq.Worflow[masterBrq.StepIndex].ActionDate)
+		wf := plugin._createWFTemplate(masterBrq.Worflow[masterBrq.StepIndex].ActionDate)
 
 		testWorkflow := []testData{
 			{
@@ -864,7 +899,7 @@ func TestHandleWorkflow(t *testing.T) {
 				if test.notifiy {
 					assert.Containsf(t, env.realNotifyThreads[test.chid].Message, expStep.Status,
 						"in step: %v, role: %v", expStep, test.role)
-					assert.Containsf(t, env.realNotifyThreads[test.chid].Message, _getUserByRole(expStep.ActorRole, &td, worker),
+					assert.Containsf(t, env.realNotifyThreads[test.chid].Message, _getUserByRole(expStep.ActorRole, td, worker),
 						"in step: %v, role: %v", expStep, test.role)
 				} else {
 					_, ok := env.realNotifyThreads[test.chid]
@@ -878,6 +913,200 @@ func TestHandleWorkflow(t *testing.T) {
 	})
 
 }
+
+func TestInvFlow(t *testing.T) {
+	logSwitch = true
+	_ = fmt.Println
+
+	type testResult struct {
+		inv BookInventory
+	}
+
+	type testData struct {
+		wfr    WorkflowRequest
+		result testResult
+	}
+
+	t.Run("normal", func(t *testing.T) {
+
+		env := newWorkflowEnv()
+
+		plugin := env.plugin
+
+		createdPid := env.createdPid
+
+		worker := env.worker
+		var master Borrow
+
+		json.Unmarshal([]byte(env.realbrUpdPosts[env.td.BorChannelId].Message), &master)
+		masterBrq := master.DataOrImage
+		wf := plugin._createWFTemplate(masterBrq.Worflow[masterBrq.StepIndex].ActionDate)
+
+		testWorkflow := []testData{
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						Stock:       2,
+						TransmitOut: 1,
+					},
+				},
+			},
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						Stock:   2,
+						Lending: 1,
+					},
+				},
+			},
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						Stock:   2,
+						Lending: 1,
+					},
+				},
+			},
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						Stock:   2,
+						Lending: 1,
+					},
+				},
+			},
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						Stock:   2,
+						Lending: 1,
+					},
+				},
+			},
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						Stock:      2,
+						TransmitIn: 1,
+					},
+				},
+			},
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_RETURNED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						Stock: 3,
+					},
+				},
+			},
+		}
+
+		for _, step := range testWorkflow {
+			step.wfr.ActorUser = worker
+			step.wfr.MasterPostKey = createdPid[env.td.BorChannelId]
+			wfrJson, _ := json.Marshal(step.wfr)
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			plugin.ServeHTTP(nil, w, r)
+
+			invPost := env.td.RealBookPostUpd[env.td.BookChIdInv]
+			var inv BookInventory
+			json.Unmarshal([]byte(invPost.Message), &inv)
+			inv.Id = ""
+			inv.Name = ""
+			inv.Relations = nil
+			assert.Equalf(t, step.result.inv, inv, "inventory should be same, at %v", wf[step.wfr.NextStepIndex].Status)
+
+			env.td.ABookInv.Stock = step.result.inv.Stock
+			env.td.ABookInv.TransmitOut = step.result.inv.TransmitOut
+			env.td.ABookInv.Lending = step.result.inv.Lending
+			env.td.ABookInv.TransmitIn = step.result.inv.TransmitIn
+
+		}
+
+	})
+
+	t.Run("be unavailable if unsufficient, available if returned. ", func(t *testing.T) {
+		env := newWorkflowEnv(injectOpt{
+			invInject: &BookInventory{
+				Stock: 1,
+			},
+		})
+		td := env.td
+		plugin := env.plugin
+		createdPid := env.createdPid
+
+		worker := env.worker
+		var master Borrow
+
+		json.Unmarshal([]byte(env.realbrUpdPosts[env.td.BorChannelId].Message), &master)
+		masterBrq := master.DataOrImage
+		wf := plugin._createWFTemplate(masterBrq.Worflow[masterBrq.StepIndex].ActionDate)
+
+		td.ABookPub.IsAllowedToBorrow = true
+		wfrJson, _ := json.Marshal(WorkflowRequest{
+			ActorUser:     worker,
+			MasterPostKey: createdPid[td.BorChannelId],
+			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+		})
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+		plugin.ServeHTTP(nil, w, r)
+
+		postPub := env.td.RealBookPostUpd[td.BookChIdPub]
+		var pub BookPublic
+		json.Unmarshal([]byte(postPub.Message), &pub)
+		assert.Equalf(t, false, pub.IsAllowedToBorrow, "should be unavailable")
+
+		td.ABookPub.IsAllowedToBorrow = false
+
+		for _, status := range []string{
+			STATUS_DELIVIED,
+			STATUS_RETURN_REQUESTED,
+			STATUS_RETURN_CONFIRMED,
+			STATUS_RETURNED,
+		} {
+			wfrJson, _ := json.Marshal(WorkflowRequest{
+				ActorUser:     worker,
+				MasterPostKey: createdPid[td.BorChannelId],
+				NextStepIndex: _getIndexByStatus(status, wf),
+			})
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			plugin.ServeHTTP(nil, w, r)
+		}
+
+		postPub = env.td.RealBookPostUpd[td.BookChIdPub]
+		json.Unmarshal([]byte(postPub.Message), &pub)
+		assert.Equalf(t, true, pub.IsAllowedToBorrow, "should be available")
+
+	})
+
+}
+
 func TestLock(t *testing.T) {
 	logSwitch = false
 	_ = fmt.Println
@@ -885,95 +1114,156 @@ func TestLock(t *testing.T) {
 	var wgall sync.WaitGroup
 	var once sync.Once
 
-	start := make(chan struct{})
-	end := make(chan struct{})
-	startNew := make(chan struct{})
+	t.Run("lock borrow request", func(t *testing.T) {
+		start := make(chan struct{})
+		end := make(chan struct{})
+		startNew := make(chan struct{})
 
-	env := newWorkflowEnv(injectOpt{
-		onGetPost: func() {
-			once.Do(func() {
-				start <- struct{}{}
-				<-end
-			})
-		},
+		env := newWorkflowEnv(injectOpt{
+			onGetPost: func() {
+				once.Do(func() {
+					start <- struct{}{}
+					<-end
+				})
+			},
+		})
+
+		td := env.td
+		// api := env.api
+		plugin := env.plugin
+
+		createdPid := env.createdPid
+
+		worker := env.worker
+
+		wgall.Add(3)
+
+		go func() {
+
+			req := WorkflowRequest{
+				MasterPostKey: createdPid[td.BorChannelId],
+				ActorUser:     worker,
+				NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
+			}
+
+			wfrJson, _ := json.Marshal(req)
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			plugin.ServeHTTP(nil, w, r)
+			startNew <- struct{}{}
+			wgall.Done()
+		}()
+
+		go func() {
+			<-start
+
+			req := WorkflowRequest{
+				MasterPostKey: createdPid[td.BorChannelId],
+				ActorUser:     worker,
+				NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
+			}
+
+			wfrJson, _ := json.Marshal(req)
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			plugin.ServeHTTP(nil, w, r)
+
+			result := w.Result()
+			var resultObj *Result
+			json.NewDecoder(result.Body).Decode(&resultObj)
+			assert.Containsf(t, resultObj.Error, "Failed to lock", "should return lock message")
+			// api.AssertNumberOfCalls(t, "UpdatePost", 5)
+			end <- struct{}{}
+			wgall.Done()
+		}()
+
+		go func() {
+			<-startNew
+
+			req := WorkflowRequest{
+				MasterPostKey: createdPid[td.BorChannelId],
+				ActorUser:     worker,
+				NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
+			}
+
+			wfrJson, _ := json.Marshal(req)
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			plugin.ServeHTTP(nil, w, r)
+
+			result := w.Result()
+			var resultObj Result
+			json.NewDecoder(result.Body).Decode(&resultObj)
+			assert.Equalf(t, resultObj.Error, "", "should normally end")
+			// api.AssertNumberOfCalls(t, "UpdatePost", 15)
+			wgall.Done()
+		}()
+
+		wgall.Wait()
 	})
 
-	td := env.td
-	api := env.api
-	plugin := env.plugin
+	t.Run("lock book", func(t *testing.T) {
 
-	createdPid := env.createdPid
+		env := newWorkflowEnv()
 
-	worker := env.worker
+		env.td.block0 = make(chan struct{})
+		env.td.block1 = make(chan struct{})
 
-	wgall.Add(3)
+		var wait sync.WaitGroup
 
-	go func() {
+		go func() {
 
-		req := WorkflowRequest{
-			MasterPostKey: createdPid[td.BorChannelId],
-			ActorUser:     worker,
-			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
-		}
+			_sendAndCheckATestWFRequest(t, env, STATUS_CONFIRMED, false)
 
-		wfrJson, _ := json.Marshal(req)
+			wait.Done()
 
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-		plugin.ServeHTTP(nil, w, r)
-		startNew <- struct{}{}
-		wgall.Done()
-	}()
+		}()
 
-	go func() {
-		<-start
+		go func() {
+			env.td.block1 <- struct{}{}
 
-		req := WorkflowRequest{
-			MasterPostKey: createdPid[td.BorChannelId],
-			ActorUser:     worker,
-			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
-		}
+			_sendAndCheckATestWFRequest(t, env, STATUS_CONFIRMED, true)
 
-		wfrJson, _ := json.Marshal(req)
+			assert.Equalf(t, 0, len(env.realbrUpdPosts), "should have no br update")
+			assert.Equalf(t, 0, len(env.td.RealBookPostUpd), "should have no book update")
 
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-		plugin.ServeHTTP(nil, w, r)
+			env.td.block0 <- struct{}{}
 
-		result := w.Result()
-		var resultObj *Result
-		json.NewDecoder(result.Body).Decode(&resultObj)
-		assert.Containsf(t, resultObj.Error, "Failed to lock", "should return lock message")
-		api.AssertNumberOfCalls(t, "UpdatePost", 5)
-		end <- struct{}{}
-		wgall.Done()
-	}()
+			wait.Done()
 
-	go func() {
-		<-startNew
+		}()
 
-		req := WorkflowRequest{
-			MasterPostKey: createdPid[td.BorChannelId],
-			ActorUser:     worker,
-			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
-		}
+		wait.Wait()
 
-		wfrJson, _ := json.Marshal(req)
+	})
+}
 
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-		plugin.ServeHTTP(nil, w, r)
+func _sendAndCheckATestWFRequest(t *testing.T, env *workflowEnv, status string, assertError bool) {
 
-		result := w.Result()
-		var resultObj Result
-		json.NewDecoder(result.Body).Decode(&resultObj)
+	req := WorkflowRequest{
+		MasterPostKey: env.createdPid[env.td.BorChannelId],
+		ActorUser:     env.worker,
+		NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
+	}
+
+	wfrJson, _ := json.Marshal(req)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+	env.plugin.ServeHTTP(nil, w, r)
+
+	result := w.Result()
+	var resultObj Result
+	json.NewDecoder(result.Body).Decode(&resultObj)
+
+	if assertError {
+		assert.NotEmpty(t, resultObj.Error, "", "should have error")
+	} else {
 		assert.Equalf(t, resultObj.Error, "", "should normally end")
-		api.AssertNumberOfCalls(t, "UpdatePost", 15)
-		wgall.Done()
-	}()
-
-	wgall.Wait()
-
+	}
 }
 
 func TestRollback(t *testing.T) {
@@ -981,72 +1271,94 @@ func TestRollback(t *testing.T) {
 	logSwitch = false
 	_ = fmt.Println
 
-	env := newWorkflowEnv(injectOpt{
-		ifUpdErrCtrl: true,
+	t.Run("rollback borrow requests", func(t *testing.T) {
+
+		env := newWorkflowEnv(injectOpt{
+			ifUpdErrCtrl: true,
+		})
+
+		td := env.td
+
+		plugin := env.plugin
+
+		var oldPosts map[string]*model.Post
+		DeepCopy(&oldPosts, &env.realbrUpdPosts)
+
+		for _, test := range []struct {
+			role string
+			chid string
+		}{
+			{
+				role: MASTER,
+				chid: td.BorChannelId,
+			},
+			{
+				role: BORROWER,
+				chid: td.BorId_botId,
+			},
+			{
+				role: LIBWORKER,
+				chid: env.worker_botId,
+			},
+			{
+				role: KEEPER,
+				chid: td.Keeper1Id_botId,
+			},
+			{
+				role: KEEPER,
+				chid: td.Keeper2Id_botId,
+			},
+		} {
+			//reset
+			DeepCopy(&env.realbrUpdPosts, &oldPosts)
+			env.updErrCtrl = map[string]bool{}
+			env.updErrCtrl[test.chid] = true
+
+			req := WorkflowRequest{
+				MasterPostKey: env.createdPid[td.BorChannelId],
+				ActorUser:     env.worker,
+				NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
+			}
+
+			wfrJson, _ := json.Marshal(req)
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			plugin.ServeHTTP(nil, w, r)
+
+			var oldBorrow Borrow
+			var newBorrow Borrow
+
+			for cr, oldpost := range oldPosts {
+
+				if cr != test.chid {
+					json.Unmarshal([]byte(oldpost.Message), &oldBorrow)
+					json.Unmarshal([]byte(env.realbrUpdPosts[oldpost.ChannelId].Message), &newBorrow)
+					assert.Equalf(t, oldBorrow, newBorrow, "step: %v, comparing: %v. Should be same as old post", test.role, cr)
+				}
+			}
+
+		}
 	})
 
-	td := env.td
+	t.Run("rollback as book update failed", func(t *testing.T) {
+		env := newWorkflowEnv()
 
-	plugin := env.plugin
+		var oldPosts map[string]*model.Post
+		DeepCopy(&oldPosts, &env.realbrUpdPosts)
 
-	var oldPosts map[string]*model.Post
-	DeepCopy(&oldPosts, &env.realbrUpdPosts)
+		env.td.updateBookErr = true
+		_sendAndCheckATestWFRequest(t, env, STATUS_CONFIRMED, true)
 
-	for _, test := range []struct {
-		role string
-		chid string
-	}{
-		{
-			role: MASTER,
-			chid: td.BorChannelId,
-		},
-		{
-			role: BORROWER,
-			chid: td.BorId_botId,
-		},
-		{
-			role: LIBWORKER,
-			chid: env.worker_botId,
-		},
-		{
-			role: KEEPER,
-			chid: td.Keeper1Id_botId,
-		},
-		{
-			role: KEEPER,
-			chid: td.Keeper2Id_botId,
-		},
-	} {
-		//reset
-		DeepCopy(&env.realbrUpdPosts, &oldPosts)
-		env.updErrCtrl = map[string]bool{}
-		env.updErrCtrl[test.chid] = true
+		for _, oldpost := range oldPosts {
+			var oldBorrow Borrow
+			var newBorrow Borrow
 
-		req := WorkflowRequest{
-			MasterPostKey: env.createdPid[td.BorChannelId],
-			ActorUser:     env.worker,
-			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
+			json.Unmarshal([]byte(env.realbrUpdPosts[oldpost.ChannelId].Message), &newBorrow)
+			json.Unmarshal([]byte(oldpost.Message), &oldBorrow)
+			assert.Equalf(t, oldBorrow, newBorrow, "all updates to br should be rollback")
 		}
-
-		wfrJson, _ := json.Marshal(req)
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-		plugin.ServeHTTP(nil, w, r)
-
-		var oldBorrow Borrow
-		var newBorrow Borrow
-
-		for cr, oldpost := range oldPosts {
-
-			if cr != test.chid {
-				json.Unmarshal([]byte(oldpost.Message), &oldBorrow)
-				json.Unmarshal([]byte(env.realbrUpdPosts[oldpost.ChannelId].Message), &newBorrow)
-				assert.Equalf(t, oldBorrow, newBorrow, "step: %v, comparing: %v. Should be same as old post", test.role, cr)
-			}
-		}
-
-	}
+	})
 
 }
 
@@ -1083,6 +1395,7 @@ func TestBorrowRestrict(t *testing.T) {
 					}
 					brj, _ := json.Marshal(br)
 					p := &model.Post{
+						Type:    "custom_borrow_type",
 						Message: string(brj),
 					}
 					searched = append(searched, p)
@@ -1098,6 +1411,7 @@ func TestBorrowRestrict(t *testing.T) {
 					}
 					brj, _ := json.Marshal(br)
 					p := &model.Post{
+						Type:    "custom_borrow_type",
 						Message: string(brj),
 					}
 					searched = append(searched, p)
@@ -1140,6 +1454,7 @@ func TestBorrowRestrict(t *testing.T) {
 					}
 					brj, _ := json.Marshal(br)
 					p := &model.Post{
+						Type:    "custom_borrow_type",
 						Message: string(brj),
 					}
 					searched = append(searched, p)
@@ -1164,6 +1479,213 @@ func TestBorrowRestrict(t *testing.T) {
 		var res Result
 		json.NewDecoder(resTest.Body).Decode(&res)
 		assert.Equalf(t, "borrowing-book-limited", res.Error, "should be error")
+	})
+
+	t.Run("error_unsufficent_stock", func(t *testing.T) {
+		env := newWorkflowEnv(injectOpt{
+			invInject: &BookInventory{
+				Stock: 0,
+			},
+		})
+		returned := env.getCurrentPosts()
+		resTest := returned.HttpResponse.Result()
+		var res Result
+		json.NewDecoder(resTest.Body).Decode(&res)
+		assert.Equalf(t, ErrNoStock.Error(), res.Error, "should be error")
+
+		postPub := env.td.RealBookPostUpd[env.td.BookChIdPub]
+		var pub BookPublic
+		json.Unmarshal([]byte(postPub.Message), &pub)
+		assert.Equalf(t, false, pub.IsAllowedToBorrow, "should be unavailable")
+	})
+
+}
+
+func TestBorrowDelete(t *testing.T) {
+	logSwitch = true
+	_ = fmt.Println
+
+	type returnedEnv struct {
+		*workflowEnv
+		wf []Step
+	}
+
+	newEnv := func(injopts ...injectOpt) returnedEnv {
+		var env *workflowEnv
+		if injopts != nil {
+			env = newWorkflowEnv(injopts[0])
+		} else {
+			env = newWorkflowEnv()
+		}
+
+		var master Borrow
+		json.Unmarshal([]byte(env.realbrUpdPosts[env.td.BorChannelId].Message), &master)
+		masterBrq := master.DataOrImage
+		wf := env.plugin._createWFTemplate(masterBrq.Worflow[masterBrq.StepIndex].ActionDate)
+
+		return returnedEnv{
+			env, wf,
+		}
+	}
+
+	performDelete := func(env *workflowEnv, assertError bool) {
+		wfrJson, _ := json.Marshal(WorkflowRequest{
+			ActorUser:     env.worker,
+			MasterPostKey: env.createdPid[env.td.BorChannelId],
+			Delete:        true,
+		})
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+		env.plugin.ServeHTTP(nil, w, r)
+
+		res := new(Result)
+		json.NewDecoder(w.Result().Body).Decode(&res)
+
+		if assertError {
+			assert.NotEmptyf(t, res.Error, "response should has error. err:%v", res.Error)
+		} else {
+			assert.Emptyf(t, res.Error, "response should not has error. err:%v", res.Error)
+		}
+	}
+
+	performNext := func(env *workflowEnv, status string, assertError bool) {
+
+		req := WorkflowRequest{
+			MasterPostKey: env.createdPid[env.td.BorChannelId],
+			ActorUser:     env.worker,
+			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
+		}
+
+		wfrJson, _ := json.Marshal(req)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+		env.plugin.ServeHTTP(nil, w, r)
+
+		res := new(Result)
+		json.NewDecoder(w.Result().Body).Decode(&res)
+
+		if assertError {
+			require.NotEmptyf(t, res.Error, "response should has error. err:%v", res.Error)
+		} else {
+			require.Emptyf(t, res.Error, "response should not has error. err:%v", res.Error)
+		}
+	}
+
+	t.Run("all steps test.", func(t *testing.T) {
+
+		env := newEnv()
+
+		performDelete(env.workflowEnv, false)
+
+		for _, step := range []struct {
+			status      string
+			assertError bool
+		}{
+			{
+				STATUS_CONFIRMED,
+				false,
+			},
+			{
+				STATUS_DELIVIED,
+				true,
+			},
+			{
+				STATUS_RENEW_REQUESTED,
+				true,
+			},
+			{
+				STATUS_RENEW_CONFIRMED,
+				true,
+			},
+			{
+				STATUS_RETURN_REQUESTED,
+				true,
+			},
+			{
+				STATUS_RETURN_CONFIRMED,
+				true,
+			},
+			{
+				STATUS_RETURNED,
+				false,
+			},
+		} {
+			performNext(env.workflowEnv, step.status, false)
+
+			performDelete(env.workflowEnv, false)
+		}
+
+	})
+
+	t.Run("delete confirmed", func(t *testing.T) {
+
+		getInv := func(env *workflowEnv) *BookInventory {
+			invPost := env.td.RealBookPostUpd[env.td.BookChIdInv]
+			inv := &BookInventory{}
+			json.Unmarshal([]byte(invPost.Message), inv)
+			return inv
+		}
+
+		env := newEnv()
+		performNext(env.workflowEnv, STATUS_CONFIRMED, false)
+		inv := getInv(env.workflowEnv)
+		assert.Equalf(t, 2, inv.Stock, "stock")
+		assert.Equalf(t, 1, inv.TransmitOut, "stock")
+		performDelete(env.workflowEnv, false)
+		inv = getInv(env.workflowEnv)
+		assert.Equalf(t, 3, inv.Stock, "stock")
+		assert.Equalf(t, 0, inv.TransmitOut, "stock")
+	})
+
+	t.Run("delete broken data", func(t *testing.T) {
+		env := newEnv()
+
+		for _, channelId := range []string{
+			env.td.BorChannelId,
+			env.td.BorId_botId,
+			env.worker_botId,
+			env.td.Keeper1Id_botId,
+			env.td.Keeper2Id_botId,
+		} {
+			env.injectOption(&injectOpt{
+				onGetPostErr: func(id string) *model.AppError {
+					if env.chidByCreatedPid[id] == channelId {
+						return model.NewAppError("GetSinglePost", "app.post.get.app_error", nil, "", http.StatusNotFound)
+					}
+					return nil
+				},
+			})
+
+			env.realbrDelPosts = map[string]string{}
+			env.realbrDelPostsSeq = []string{}
+
+			if channelId == env.td.BorChannelId {
+				performDelete(env.workflowEnv, true)
+			} else {
+				performDelete(env.workflowEnv, false)
+			}
+
+			if channelId == env.td.BorChannelId {
+				assert.Equalf(t, 0, len(env.realbrDelPosts), "master error is fatal error, no deletion should be performed")
+			} else {
+				assert.Equalf(t, 4, len(env.realbrDelPosts), "should be deleted, except the error one")
+			}
+
+			_, ok := env.realbrDelPosts[channelId]
+			assert.Equalf(t, false, ok, "should be deleted false")
+
+		}
+	})
+
+	t.Run("delete sequence", func(t *testing.T) {
+		env := newEnv()
+		performDelete(env.workflowEnv, false)
+		seqLen := len(env.realbrDelPostsSeq)
+		assert.Equalf(t, env.createdPid[env.td.BorChannelId], env.realbrDelPostsSeq[seqLen-1], "last should be borrow channel")
+		assert.Equalf(t, env.createdPid[env.worker_botId], env.realbrDelPostsSeq[seqLen-2], "last second should be borrow channel")
+
 	})
 
 }

@@ -40,6 +40,22 @@
         "default": "books"
       },
       {
+        "key": "BooksPrivateChannelName",
+        "display_name": "Books Channel(Private) Name:",
+        "type": "text",
+        "help_text": "The prive channel is used to store private information of books",
+        "placeholder": "books_private",
+        "default": "books_private"
+      },
+      {
+        "key": "BooksInventoryChannelName",
+        "display_name": "Books Channel(Inventory) Name:",
+        "type": "text",
+        "help_text": "The inventory channel is used to store inventory information of books",
+        "placeholder": "books_inventory",
+        "default": "books_inventory"
+      },
+      {
         "key": "BorrowWorkflowChannelName",
         "display_name": "Borrow Workflow Channel Name:",
         "type": "text",
@@ -48,11 +64,19 @@
         "default": "borrow"
       },
       {
+        "key": "InitialAdmin",
+        "display_name": "Inital system administrator",
+        "type": "text",
+        "help_text": "The inital system adminstrator will be added to all channels initially.",
+        "placeholder": "",
+        "default": ""
+      },
+      {
         "key": "BorrowLimit",
         "display_name": "Borrowing books limit:",
         "type": "number",
         "help_text": "The max books can be borrowed befored returned",
-        "placeholder": 2,
+        "placeholder": "",
         "default": 2
       }
     ]

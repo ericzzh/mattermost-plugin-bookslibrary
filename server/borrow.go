@@ -36,12 +36,30 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 
 	}
 
-	if err := p._checkConditions(borrowRequestKey); err != nil {
+	bookInfo, err := p._lockAndGetABook(borrowRequestKey.BookPostId)
+	if err != nil {
+		defer lockmap.Delete(borrowRequestKey.BookPostId)
+		p.API.LogError("Failed to lock or get a book.", "err", fmt.Sprintf("%+v", err))
+		resp, _ := json.Marshal(Result{
+			Error: "Failed to lock or get a book.",
+		})
+
+		w.Write(resp)
+		return
+
+	}
+	defer lockmap.Delete(borrowRequestKey.BookPostId)
+
+	if err := p._checkConditions(borrowRequestKey, bookInfo); err != nil {
 
 		var resp []byte
 
 		switch {
 		case errors.Is(err, ErrBorrowingLimited):
+			resp, _ = json.Marshal(Result{
+				Error: err.Error(),
+			})
+		case errors.Is(err, ErrNoStock):
 			resp, _ = json.Marshal(Result{
 				Error: err.Error(),
 			})
@@ -196,7 +214,7 @@ func (p *Plugin) _makeAndSendBorrowRequest(user string, channelId string, role [
 	borrow.Role = role
 	borrow.DataOrImage = borrowRequest
 
-	borrow_data_bytes, err := json.MarshalIndent(borrow, "", "")
+	borrow_data_bytes, err := json.Marshal(borrow)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "Failed to convert to a borrow record. role:%v, user:%v", role, user)
 	}
@@ -240,7 +258,7 @@ func (p *Plugin) _updateRelations(post *model.Post, relations RelationKeys, borr
 
 	borrow.RelationKeys = relations
 
-	borrow_data_bytes, err := json.MarshalIndent(borrow, "", "")
+	borrow_data_bytes, err := json.Marshal(borrow)
 	if err != nil {
 		return errors.Wrapf(err, "Failed to convert to a borrow record. role: %v", borrow.Role)
 	}
@@ -259,7 +277,7 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 	otherData otherRequestData) (*BorrowRequest, error) {
 
 	var err error
-	var book Book
+	var book *Book
 
 	bq := new(BorrowRequest)
 
@@ -267,19 +285,17 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 
 	if masterBr == nil {
 
-		bookPost, appErr := p.API.GetPost(bqk.BookPostId)
-
-		if appErr != nil {
-			return nil, errors.Wrapf(appErr, "Failed to get book post id %s.", bqk.BookPostId)
+		bookInfo, err := p.GetABook(bqk.BookPostId)
+		if err != nil {
+			if err != nil {
+				return nil, errors.Wrapf(err, "Failed to get book post id %s.", bqk.BookPostId)
+			}
 		}
-
-		if err := json.Unmarshal([]byte(bookPost.Message), &book); err != nil {
-			return nil, errors.Wrapf(err, "Failed to unmarshal bookpost. post id:%s", bqk.BookPostId)
-		}
+		book = bookInfo.book
 
 		bq.BookPostId = bqk.BookPostId
-		bq.BookId = book.Id
-		bq.BookName = book.Name
+		bq.BookId = book.BookPublic.Id
+		bq.BookName = book.BookPublic.Name
 		bq.Author = book.Author
 	} else {
 
@@ -467,8 +483,25 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 
 }
 
-func (p *Plugin) _checkConditions(brk *BorrowRequestKey) error {
+func (p *Plugin) _checkConditions(brk *BorrowRequestKey, bookInfo *bookInfo) error {
 
+	book := bookInfo.book
+	//check if stock is sufficent.
+	if book.BookInventory.Stock <= 0 {
+
+		book.BookPublic.IsAllowedToBorrow = false
+		if err := p._updateBookParts(updateOptions{
+			pub:     book.BookPublic,
+			pubPost: bookInfo.pubPost,
+		}); err != nil {
+			return errors.New("update pub error.")
+		}
+
+		return ErrNoStock
+
+	}
+
+	//check if max borrowing concurrent limit is obeyed
 	posts, err := p.API.SearchPostsInTeam(p.team.Id, []*model.SearchParams{
 		{
 			Terms:     "BORROWER_EQ_" + brk.BorrowerUser,
@@ -486,6 +519,9 @@ func (p *Plugin) _checkConditions(brk *BorrowRequestKey) error {
 	count := 0
 
 	for _, post := range posts {
+		if post.Type != "custom_borrow_type" {
+			continue
+		}
 		var br Borrow
 		json.Unmarshal([]byte(post.Message), &br)
 
@@ -510,4 +546,24 @@ func (p *Plugin) _checkConditions(brk *BorrowRequestKey) error {
 	}
 
 	return nil
+}
+
+func (p *Plugin) _lockAndGetABook(id string) (*bookInfo, error) {
+
+	//lock pub part only
+	if _, ok := lockmap.LoadOrStore(id, struct{}{}); ok {
+		return nil, errors.New(fmt.Sprintf("lock error."))
+	}
+
+	var (
+		bookInfo *bookInfo
+		err      error
+	)
+	if bookInfo, err = p.GetABook(id); err != nil {
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to get book post id %s.", id)
+		}
+	}
+
+	return bookInfo, nil
 }

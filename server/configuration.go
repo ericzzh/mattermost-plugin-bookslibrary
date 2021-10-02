@@ -22,8 +22,11 @@ import (
 type configuration struct {
 	TeamName                  string
 	BooksChannelName          string
+	BooksPrivateChannelName   string
+	BooksInventoryChannelName string
 	BorrowWorkflowChannelName string
-        BorrowLimit               int
+	BorrowLimit               int
+	InitialAdmin              string
 }
 
 // Clone shallow copies the configuration. Your implementation may require a deep copy if
@@ -86,7 +89,6 @@ func (p *Plugin) OnConfigurationChange() error {
 	p.setConfiguration(configuration)
 
 	// ensure book library bot
-
 	botID, ensureBotError := p.Helpers.EnsureBot(&model.Bot{
 		Username:    "bookslibrary",
 		DisplayName: "Books Library Bot",
@@ -98,26 +100,78 @@ func (p *Plugin) OnConfigurationChange() error {
 
 	p.botID = botID
 
+	// initial admin is must
+
+	// ensure team
 	team, appErr := p.ensureTeam(configuration.TeamName)
 	if appErr != nil {
 		return errors.Wrap(appErr, "failed to ensure team.")
 	}
 	p.team = team
 
-	bkchannel, appErr := p.ensureChannel(team.Id, configuration.BooksChannelName,"Books", "Channel for books library.", model.CHANNEL_OPEN)
+	// ensure books public channel
+	bkchannel, appErr := p.ensureChannel(team.Id, configuration.BooksChannelName, "Books", "Channel for books library.", model.CHANNEL_OPEN)
 	if appErr != nil {
 		return errors.Wrap(appErr, "failed to ensure channel")
 	}
 	p.booksChannel = bkchannel
 
-	bchannel, appErr := p.ensureChannel(team.Id, configuration.BorrowWorkflowChannelName, "Borrows","Channel for borrowing workflow.", model.CHANNEL_PRIVATE)
+	// ensure books private channel
+	bkprichannel, appErr := p.ensureChannel(team.Id, configuration.BooksPrivateChannelName,
+		"Books Private", "Channel for books private infomation.", model.CHANNEL_PRIVATE)
+	if appErr != nil {
+		return errors.Wrap(appErr, "failed to ensure channel")
+	}
+	p.booksPriChannel = bkprichannel
+
+	// ensure books inventory channel
+	bkinvchannel, appErr := p.ensureChannel(team.Id, configuration.BooksInventoryChannelName,
+		"Books Inventory", "Channel for books inventory infomation.", model.CHANNEL_PRIVATE)
+	if appErr != nil {
+		return errors.Wrap(appErr, "failed to ensure channel")
+	}
+	p.booksInvChannel = bkinvchannel
+
+	// ensure workflow
+	bchannel, appErr := p.ensureChannel(team.Id, configuration.BorrowWorkflowChannelName, "Borrows", "Channel for borrowing workflow.", model.CHANNEL_PRIVATE)
 	if appErr != nil {
 		return errors.Wrap(appErr, "failed to ensure channel")
 	}
 	p.borrowChannel = bchannel
 
-        p.borrowTimes = configuration.BorrowLimit
+	p.borrowTimes = configuration.BorrowLimit
 
+	// assign initial admin
+	if configuration.InitialAdmin != "" {
+		admin, appErr := p.API.GetUserByUsername(configuration.InitialAdmin)
+		if appErr != nil {
+			return errors.Wrap(appErr, "failed to find initial admin")
+		}
+
+		if appErr := p.ensureMemberInTeam(team, admin); appErr != nil {
+			return errors.Wrap(appErr, "failed to add member to books team")
+		}
+
+                err := p.ensureMemberInChannel(bkchannel, admin)
+		if err != nil {
+			return errors.Wrap(err, "failed to assign inital user to book channel")
+		}
+
+		err = p.ensureMemberInChannel(bkprichannel, admin)
+		if err != nil {
+			return errors.Wrap(err, "failed to assign inital user to book channel(private)")
+		}
+
+		err = p.ensureMemberInChannel(bkinvchannel, admin)
+		if err != nil {
+			return errors.Wrap(err, "failed to assign inital user to book channel(inventory)")
+		}
+
+		err = p.ensureMemberInChannel(bchannel, admin)
+		if err != nil {
+			return errors.Wrap(err, "failed to assign inital user to borrow channel")
+		}
+	}
 	return nil
 }
 
@@ -137,7 +191,7 @@ func (p *Plugin) ensureTeam(name string) (*model.Team, error) {
 
 	team, appErr = p.API.CreateTeam(&model.Team{
 		Name:        name,
-                DisplayName: "Books Library",
+		DisplayName: "Books Library",
 		Description: "Books Library",
 		Type:        model.TEAM_INVITE,
 	})
@@ -161,15 +215,55 @@ func (p *Plugin) ensureChannel(teamid, name, displayName, purpose, chtype string
 		return channel, nil
 	}
 	channel, appErr = p.API.CreateChannel(&model.Channel{
-		TeamId:  teamid,
-		Name:    name,
-                DisplayName: displayName,
-  		Purpose: purpose,
-		Type:    chtype,
+		TeamId:      teamid,
+		Name:        name,
+		DisplayName: displayName,
+		Purpose:     purpose,
+		Type:        chtype,
 	})
 
 	if appErr != nil {
 		return nil, errors.Wrapf(appErr, "faield to create channel with name: %s", name)
 	}
 	return channel, nil
+}
+
+func (p *Plugin) ensureMemberInTeam(team *model.Team, admin *model.User) error {
+
+	_, appErr := p.API.GetTeamMember(team.Id, admin.Id)
+
+	if appErr != nil && appErr.Id != "app.team.get_member.missing.app_error" {
+		return errors.Wrapf(appErr, "failed to get team member")
+	}
+
+	if appErr == nil {
+		return nil
+	}
+
+	_, appErr = p.API.CreateTeamMember(team.Id, admin.Id)
+	if appErr != nil {
+		return errors.Wrap(appErr, "failed to assign inital user")
+	}
+
+	return nil
+}
+
+func (p *Plugin) ensureMemberInChannel(channel *model.Channel, admin *model.User) error {
+
+	_, appErr := p.API.GetChannelMember(channel.Id, admin.Id)
+
+	if appErr != nil && appErr.Id != "app.team.get_member.missing.app_error" {
+		return errors.Wrapf(appErr, "failed to get channel member")
+	}
+
+	if appErr == nil {
+		return nil
+	}
+
+	_, appErr = p.API.AddChannelMember(channel.Id, admin.Id)
+	if appErr != nil {
+		return errors.Wrap(appErr, "failed to assign inital user to channel")
+	}
+
+	return nil
 }

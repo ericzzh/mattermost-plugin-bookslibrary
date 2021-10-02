@@ -37,6 +37,8 @@ func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter,
 	all, err := p._loadAndLock(workflowReq)
 
 	if err != nil {
+		defer p._unlock(all)
+
 		p.API.LogError("Failed to lock and get posts from workflow requests.", "err", err.Error())
 		resp, _ := json.Marshal(Result{
 			Error: "Failed to lock and get posts from workflow requests.",
@@ -49,7 +51,39 @@ func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter,
 
 	defer p._unlock(all)
 
-	if err := p._process(workflowReq, all); err != nil {
+	bookPostId := all[MASTER][0].borrow.DataOrImage.BookPostId
+	bookInfo, err := p._lockAndGetABook(bookPostId)
+	if err != nil {
+		defer lockmap.Delete(bookPostId)
+		p.API.LogError("Failed to lock or get a book.", "err", fmt.Sprintf("%+v", err))
+		resp, _ := json.Marshal(Result{
+			Error: "Failed to lock or get a book.",
+		})
+
+		w.Write(resp)
+		return
+
+	}
+
+	defer lockmap.Delete(bookPostId)
+
+	if workflowReq.Delete {
+
+		if err := p._deleteBorrowRequest(workflowReq, all, bookInfo); err != nil {
+			p.API.LogError("delete borrow request error, please retry.", "error", err.Error())
+			resp, _ := json.Marshal(Result{
+				Error: fmt.Sprintf("delete borrow request error, please retry."),
+			})
+
+			w.Write(resp)
+			return
+		}
+
+		return
+
+	}
+
+	if err := p._process(workflowReq, all, bookInfo); err != nil {
 		p.API.LogError("Process  error.", "error", err.Error())
 		resp, _ := json.Marshal(Result{
 			Error: fmt.Sprintf("process error."),
@@ -59,7 +93,7 @@ func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter,
 		return
 	}
 
-	if err := p._save(all); err != nil {
+	if err := p._save(all, bookInfo); err != nil {
 		p.API.LogError("Save error.", "err", err.Error())
 		resp, _ := json.Marshal(Result{
 			Error: "Save error.",
@@ -81,9 +115,14 @@ func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter,
 
 }
 
-func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost) error {
+func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost, bookInfo *bookInfo) error {
 
 	actionTime := GetNowTime()
+
+	//in-place change
+	inv := bookInfo.book.BookInventory
+	pub := bookInfo.book.BookPublic
+
 	for _, role := range []string{
 		MASTER, BORROWER, LIBWORKER, KEEPER,
 	} {
@@ -102,7 +141,28 @@ func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost
 				switch nextStep.Status {
 				case STATUS_REQUESTED:
 				case STATUS_CONFIRMED:
+
+					//just set stock only once
+					//As master is the most completed role
+					if role == MASTER {
+						if inv.Stock <= 0 {
+							return errors.New(fmt.Sprintf("No stock."))
+						}
+
+						inv.Stock--
+
+						if inv.Stock == 0 && pub.IsAllowedToBorrow {
+							pub.IsAllowedToBorrow = false
+						}
+
+						inv.TransmitOut++
+					}
+
 				case STATUS_DELIVIED:
+					if role == MASTER {
+						inv.TransmitOut--
+						inv.Lending++
+					}
 				default:
 					return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
 				}
@@ -117,7 +177,20 @@ func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost
 				switch nextStep.Status {
 				case STATUS_RETURN_REQUESTED:
 				case STATUS_RETURN_CONFIRMED:
+					if role == MASTER {
+						inv.Lending--
+						inv.TransmitIn++
+					}
 				case STATUS_RETURNED:
+					if role == MASTER {
+						inv.TransmitIn--
+						inv.Stock++
+
+						if inv.Stock > 0 &&
+							!pub.IsAllowedToBorrow {
+							pub.IsAllowedToBorrow = true
+						}
+					}
 				default:
 					return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
 				}
@@ -137,6 +210,53 @@ func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost
 	return nil
 }
 
+func (p *Plugin) _deleteBorrowRequest(req *WorkflowRequest, all map[string][]*borrowWithPost, bookInfo *bookInfo) error {
+
+	ms := all[MASTER][0]
+	ix := ms.borrow.DataOrImage.StepIndex
+	cs := ms.borrow.DataOrImage.Worflow[ix]
+	st := cs.Status
+
+	if st != STATUS_REQUESTED &&
+		st != STATUS_CONFIRMED &&
+		st != STATUS_RETURNED {
+
+		return errors.New("the request is not allowed to be deleted.")
+	}
+
+	for _, role := range []string{
+		KEEPER, BORROWER, LIBWORKER, MASTER,
+	} {
+		for _, brwp := range all[role] {
+			if brwp == nil {
+				continue
+			}
+			//skip nil post(already deleted)
+			if brwp.post != nil {
+				if role == MASTER {
+					// we must place the inventory adjustment firslty when processing Master
+					// this leave a chance to retry when update book parts error
+					if st == STATUS_CONFIRMED {
+						inv := bookInfo.book.BookInventory
+						inv.TransmitOut--
+						inv.Stock++
+						if err := p._updateBookParts(updateOptions{
+							inv:     inv,
+							invPost: bookInfo.invPost,
+						}); err != nil {
+							return errors.Wrapf(err, "adjust inventory error")
+						}
+					}
+				}
+				if appErr := p.API.DeletePost(brwp.post.Id); appErr != nil {
+					return errors.Wrapf(appErr, "delete error, please retry or contact admin")
+				}
+			}
+		}
+	}
+
+	return nil
+}
 func (p *Plugin) _getUserByRole(step Step, brqRole string, brq *BorrowRequest) []string {
 
 	switch step.ActorRole {
@@ -165,6 +285,9 @@ func (p *Plugin) _getBorrowById(id string) (*borrowWithPost, error) {
 
 	post, appErr := p.API.GetPost(id)
 	if appErr != nil {
+		if appErr.StatusCode == http.StatusNotFound {
+			return nil, ErrNotFound
+		}
 		return nil, errors.Wrapf(appErr, "Get post error.")
 	}
 	bwp.post = post
@@ -188,6 +311,9 @@ func (p *Plugin) _loadAndLock(req *WorkflowRequest) (map[string][]*borrowWithPos
 
 	master, err := p._getBorrowById(req.MasterPostKey)
 	if err != nil {
+                // not found is a fatal error for master post
+                // so it should be end (different with other kind posts)
+		defer lockmap.Delete(req.MasterPostKey)
 		return nil, errors.Wrapf(err, fmt.Sprintf("Get %v borrow error", MASTER))
 	}
 	allBorrows[MASTER] = append(allBorrows[MASTER], master)
@@ -217,7 +343,12 @@ func (p *Plugin) _loadAndLock(req *WorkflowRequest) (map[string][]*borrowWithPos
 
 			br, err := p._getBorrowById(id)
 			if err != nil {
-				return nil, errors.Wrapf(err, fmt.Sprintf("Get %v borrow error", role.name))
+				defer lockmap.Delete(id)
+				if errors.Is(err, ErrNotFound) && req.Delete {
+					br = nil
+				} else {
+					return nil, errors.Wrapf(err, fmt.Sprintf("Get %v borrow error", role.name))
+				}
 			}
 			allBorrows[role.name] = append(allBorrows[role.name], br)
 		}
@@ -229,14 +360,20 @@ func (p *Plugin) _loadAndLock(req *WorkflowRequest) (map[string][]*borrowWithPos
 
 func (p *Plugin) _unlock(all map[string][]*borrowWithPost) {
 
+	if all == nil {
+		return
+	}
+
 	for _, bwp := range all {
 		for _, b := range bwp {
-			lockmap.Delete(b.post.Id)
+			if b != nil {
+				lockmap.Delete(b.post.Id)
+			}
 		}
 	}
 }
 
-func (p *Plugin) _save(all map[string][]*borrowWithPost) error {
+func (p *Plugin) _save(all map[string][]*borrowWithPost, bookInfo *bookInfo) error {
 
 	updated := []*model.Post{}
 
@@ -259,7 +396,7 @@ func (p *Plugin) _save(all map[string][]*borrowWithPost) error {
 
 		brw := all[role.name]
 		for _, br := range brw {
-			brJson, err := json.MarshalIndent(br.borrow, "", "")
+			brJson, err := json.Marshal(br.borrow)
 			if err != nil {
 				p._rollbackToOld(updated)
 				return errors.Wrapf(err, fmt.Sprintf("Marshal %v error.", role))
@@ -283,6 +420,17 @@ func (p *Plugin) _save(all map[string][]*borrowWithPost) error {
 
 	}
 
+	if err := p._updateBookParts(updateOptions{
+		pub:     bookInfo.book.BookPublic,
+		pubPost: bookInfo.pubPost,
+		pri:     bookInfo.book.BookPrivate,
+		priPost: bookInfo.priPost,
+		inv:     bookInfo.book.BookInventory,
+		invPost: bookInfo.invPost,
+	}); err != nil {
+		p._rollbackToOld(updated)
+		return errors.New("update pub error.")
+	}
 	return nil
 }
 
@@ -299,8 +447,8 @@ func (p *Plugin) _notifyStatusChange(all map[string][]*borrowWithPost, req *Work
 		for _, br := range all[role] {
 			currStep := br.borrow.DataOrImage.Worflow[br.borrow.DataOrImage.StepIndex]
 
-                        relatedRoleSet := ConvertStringArrayToSet(currStep.RelatedRoles)
-                        
+			relatedRoleSet := ConvertStringArrayToSet(currStep.RelatedRoles)
+
 			if ConstainsInStringSet(relatedRoleSet, []string{role}) {
 				if _, appErr := p.API.CreatePost(&model.Post{
 					UserId:    p.botID,
