@@ -17,6 +17,17 @@ const (
 	REL_BOOK_INVENTORY = "inventory"
 )
 
+const (
+	TAG_PREFIX_BORROWER  = "#b_"
+	TAG_PREFIX_LIBWORKER = "#w_"
+	TAG_PREFIX_KEEPER    = "#k_"
+	TAG_PREFIX_STATUS    = "#s_"
+	TAG_PREFIX_ID        = "#id_"
+	TAG_PREFIX_C1        = "#c1_"
+	TAG_PREFIX_C2        = "#c2_"
+	TAG_PREFIX_C3        = "#c3_"
+)
+
 type Relations map[string]string
 type BookPublic struct {
 	Id                string    `json:"id_pub"`
@@ -36,7 +47,7 @@ type BookPublic struct {
 	BookIndex         string    `json:"book_index"`
 	LibworkerUsers    []string  `json:"libworker_users"`
 	LibworkerNames    []string  `json:"libworker_names,omitempty"`
-	IsAllowedToBorrow bool      `json:"isAllowedToBorrow,omitempty"`
+	IsAllowedToBorrow bool      `json:"isAllowedToBorrow"`
 	Tags              []string  `json:"tags,omitempty"`
 	Relations         Relations `json:"relations_pub,omitempty"`
 }
@@ -82,14 +93,14 @@ const (
 )
 
 const (
-	STATUS_REQUESTED        = "REQUESTED"
-	STATUS_CONFIRMED        = "CONFIRMED"
-	STATUS_DELIVIED         = "DELIVIED"
-	STATUS_RENEW_REQUESTED  = "RENEW_REQUESTED"
-	STATUS_RENEW_CONFIRMED  = "RENEW_CONFIRMED"
-	STATUS_RETURN_REQUESTED = "RETURN_REQUESTED"
-	STATUS_RETURN_CONFIRMED = "RETURN_CONFIRMED"
-	STATUS_RETURNED         = "RETURNED"
+	STATUS_REQUESTED        = "R"
+	STATUS_CONFIRMED        = "C"
+	STATUS_DELIVIED         = "D"
+	STATUS_RENEW_REQUESTED  = "RR"
+	STATUS_RENEW_CONFIRMED  = "RC"
+	STATUS_RETURN_REQUESTED = "RTR"
+	STATUS_RETURN_CONFIRMED = "RTC"
+	STATUS_RETURNED         = "RT"
 )
 
 const (
@@ -107,7 +118,7 @@ type WorkflowRequest struct {
 	MasterPostKey string `json:"master_key"`
 	ActorUser     string `json:"act_user"`
 	NextStepIndex int    `json:"next_step_index"`
-        Delete        bool   `json:"delete"`
+	Delete        bool   `json:"delete"`
 }
 
 //The key role is library worker(libworker). it is the cross-point in the workflow
@@ -142,6 +153,7 @@ type BorrowRequest struct {
 	Worflow       []Step   `json:"workflow"`
 	StepIndex     int      `json:"step_index"`
 	LastStepIndex int      `json:"last_step_index"`
+	RenewedTimes  int      `json:"renewed_times"`
 	Tags          []string `json:"tags"`
 }
 
@@ -157,6 +169,11 @@ type RelationKeys struct {
 	Borrower  string   `json:"borrower,omitempty"`
 	Libworker string   `json:"libworker,omitempty"`
 	Keepers   []string `json:"keepers,omitempty"`
+}
+
+type BookConfig struct {
+	MaxRenewTimes int `json:"max_renew_times"`
+	ExpiredDays   int `json:"expired_days"`
 }
 
 const (
@@ -180,6 +197,7 @@ type Result struct {
 var (
 	ErrBorrowingLimited = errors.New("borrowing-book-limited")
 	ErrLocked           = errors.New("record-locked")
-        ErrNotFound         = errors.New("not-found")
-        ErrNoStock          = errors.New("no-stock")
+	ErrNotFound         = errors.New("not-found")
+	ErrNoStock          = errors.New("no-stock")
+	ErrRenewLimited     = errors.New("renew-limited")
 )

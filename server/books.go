@@ -255,7 +255,7 @@ func (p *Plugin) _updateBookParts(opts updateOptions) error {
 }
 
 func (p *Plugin) _updateBookPart(post *model.Post, part interface{}) error {
-	mjson, err := json.Marshal(part)
+	mjson, err := json.MarshalIndent(part, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -317,7 +317,10 @@ func (p *Plugin) _updateABook(book *Book) error {
 	if err != nil {
 		return errors.Wrapf(err, "get pri error.")
 	}
-	bookPri.Relations = bookPriOld.Relations
+	if bookPri != nil {
+		bookPri.Relations = bookPriOld.Relations
+	}
+
 	//------------------------------
 	//get inventory part
 	//------------------------------
@@ -334,47 +337,24 @@ func (p *Plugin) _updateABook(book *Book) error {
 		return errors.Wrapf(err, "get inv error.")
 	}
 
-	totalOld := bookInvOld.Stock + bookInvOld.TransmitOut + bookInvOld.Lending + bookInvOld.TransmitIn
-
-	if bookInv.Stock > totalOld {
-		diff := bookInv.Stock - totalOld
-		bookInv.Stock = bookInvOld.Stock + diff
-	} else {
-		diff := totalOld - bookInv.Stock
-		bookInv.Stock = bookInvOld.Stock - diff
-		if bookInv.Stock < 0 {
-			return errors.New("stock can not be negative.")
+	if bookInv != nil {
+		totalOld := bookInvOld.Stock + bookInvOld.TransmitOut + bookInvOld.Lending + bookInvOld.TransmitIn
+		if bookInv.Stock > totalOld {
+			diff := bookInv.Stock - totalOld
+			bookInv.Stock = bookInvOld.Stock + diff
+		} else {
+			diff := totalOld - bookInv.Stock
+			bookInv.Stock = bookInvOld.Stock - diff
+			if bookInv.Stock < 0 {
+				return errors.New("stock can not be negative.")
+			}
 		}
+		bookInv.TransmitIn = bookInvOld.TransmitIn
+		bookInv.Lending = bookInvOld.Lending
+		bookInv.TransmitOut = bookInvOld.TransmitOut
+
+		bookInv.Relations = bookInvOld.Relations
 	}
-	bookInv.TransmitIn = bookInvOld.TransmitIn
-	bookInv.Lending = bookInvOld.Lending
-	bookInv.TransmitOut = bookInvOld.TransmitOut
-
-	bookInv.Relations = bookInvOld.Relations
-
-	//------------------------------
-	//Start updating
-	//------------------------------
-	// 	updates := []*model.Post{}
-	// 	if err := p._compareAndUpdate(bookPubOldPost, bookPub); err != nil {
-	// 		return errors.Wrapf(err, "compare and update error for pub.")
-	// 	}
-	//
-	// 	updates = append(updates, bookPubOldPost)
-	//
-	// 	if err := p._compareAndUpdate(bookPriOldPost, bookPri); err != nil {
-	// 		p._rollbackToOld(updates)
-	// 		return errors.Wrapf(err, "compare and update error for pri.")
-	// 	}
-	//
-	// 	updates = append(updates, bookPriOldPost)
-	//
-	// 	if err := p._compareAndUpdate(bookInvOldPost, bookInv); err != nil {
-	// 		p._rollbackToOld(updates)
-	// 		return errors.Wrapf(err, "compare and update error for inv.")
-	// 	}
-	//
-	// 	updates = append(updates, bookInvOldPost)
 
 	if err := p._updateBookParts(
 		updateOptions{
@@ -455,7 +435,7 @@ func (p *Plugin) _deleteABook(book *Book) error {
 	bookPubOld := new(BookPublic)
 	bookPubOldPost, err := p._getUnmarshaledPost(pubId, bookPubOld)
 	if err != nil {
-                //fail to get pub is fatal, so just return
+		//fail to get pub is fatal, so just return
 		return errors.Wrapf(err, "get pub error.")
 	}
 
@@ -519,12 +499,12 @@ func (p *Plugin) _fillABookCommon(book *Book) error {
 
 	//public part
 	bookpub := book.BookPublic
-	bookpub.IsAllowedToBorrow = true
+	bookpub.IsAllowedToBorrow = book.IsAllowedToBorrow
 	bookpub.Tags = []string{
-		"#ID_EQ_" + bookpub.Id,
-		"#CATEGORY1_EQ_" + bookpub.Category1,
-		"#CATEGORY2_EQ_" + bookpub.Category2,
-		"#CATEGORY3_EQ_" + bookpub.Category3,
+		TAG_PREFIX_ID + bookpub.Id,
+		TAG_PREFIX_C1 + bookpub.Category1,
+		TAG_PREFIX_C2 + bookpub.Category2,
+		TAG_PREFIX_C3 + bookpub.Category3,
 	}
 
 	bookpub.LibworkerNames = []string{}
@@ -538,22 +518,26 @@ func (p *Plugin) _fillABookCommon(book *Book) error {
 
 	//private part
 	bookpri := book.BookPrivate
-	bookpri.Id = bookpub.Id
-	bookpri.Name = bookpub.Name
+	if bookpri != nil {
+		bookpri.Id = bookpub.Id
+		bookpri.Name = bookpub.Name
 
-	bookpri.KeeperNames = []string{}
-	for _, username := range bookpri.KeeperUsers {
-		disName, err := p._getDisplayNameByUser(username)
-		if err != nil {
-			return err
+		bookpri.KeeperNames = []string{}
+		for _, username := range bookpri.KeeperUsers {
+			disName, err := p._getDisplayNameByUser(username)
+			if err != nil {
+				return err
+			}
+			bookpri.KeeperNames = append(bookpri.KeeperNames, disName)
 		}
-		bookpri.KeeperNames = append(bookpri.KeeperNames, disName)
 	}
 
 	//inventory part
 	bookinv := book.BookInventory
-	bookinv.Id = bookpub.Id
-	bookinv.Name = bookpub.Name
+	if bookinv != nil {
+		bookinv.Id = bookpub.Id
+		bookinv.Name = bookpub.Name
+	}
 
 	return nil
 }
@@ -561,6 +545,12 @@ func (p *Plugin) _fillABookCommon(book *Book) error {
 func (p *Plugin) _createABook(book *Book) (string, error) {
 	if err := p._fillABookCommon(book); err != nil {
 		return "", errors.Wrapf(err, "fill a book error.")
+	}
+
+	if book.BookPublic == nil ||
+		book.BookPrivate == nil ||
+		book.BookInventory == nil {
+		return "", errors.New("pub, pri or inv part should not be nil.")
 	}
 
 	//---------------------------------------
@@ -591,7 +581,6 @@ func (p *Plugin) _createABook(book *Book) (string, error) {
 	postPri, appErr := p.API.CreatePost(
 		&model.Post{
 			UserId:    p.botID,
-			Type:      "custom_book_type",
 			ChannelId: p.booksPriChannel.Id,
 			Message:   "",
 		},
@@ -608,7 +597,6 @@ func (p *Plugin) _createABook(book *Book) (string, error) {
 	postInv, appErr := p.API.CreatePost(
 		&model.Post{
 			UserId:    p.botID,
-			Type:      "custom_book_type",
 			ChannelId: p.booksInvChannel.Id,
 			Message:   "",
 		},

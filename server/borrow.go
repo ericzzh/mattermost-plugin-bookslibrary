@@ -214,10 +214,10 @@ func (p *Plugin) _makeAndSendBorrowRequest(user string, channelId string, role [
 	borrow.Role = role
 	borrow.DataOrImage = borrowRequest
 
-	borrow_data_bytes, err := json.Marshal(borrow)
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "Failed to convert to a borrow record. role:%v, user:%v", role, user)
-	}
+	// borrow_data_bytes, err := json.Marshal(borrow)
+	// if err != nil {
+	// 	return nil, nil, errors.Wrapf(err, "Failed to convert to a borrow record. role:%v, user:%v", role, user)
+	// }
 
 	if user != "" {
 		userInfo, err := p.API.GetUserByUsername(user)
@@ -239,7 +239,8 @@ func (p *Plugin) _makeAndSendBorrowRequest(user string, channelId string, role [
 	if post, appErr = p.API.CreatePost(&model.Post{
 		UserId:    p.botID,
 		ChannelId: channelId,
-		Message:   string(borrow_data_bytes),
+		// Message:   string(borrow_data_bytes),
+		Message:   "",
 		Type:      "custom_borrow_type",
 	}); appErr != nil {
 		return nil, nil, errors.Wrapf(appErr, "Failed to post a borrow record. role: %v, user: %v", role, user)
@@ -258,7 +259,7 @@ func (p *Plugin) _updateRelations(post *model.Post, relations RelationKeys, borr
 
 	borrow.RelationKeys = relations
 
-	borrow_data_bytes, err := json.Marshal(borrow)
+	borrow_data_bytes, err := json.MarshalIndent(borrow,"","  ")
 	if err != nil {
 		return errors.Wrapf(err, "Failed to convert to a borrow record. role: %v", borrow.Role)
 	}
@@ -313,7 +314,7 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 			return nil, errors.Wrapf(err, "Failed to get borrower display name. user:%s", borrowerUser)
 		}
 		bq.Tags = append(bq.Tags, []string{
-			"#BORROWERUSER_EQ_" + bq.BorrowerUser,
+			TAG_PREFIX_BORROWER + bq.BorrowerUser,
 		}...)
 	}
 
@@ -328,7 +329,7 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 	}
 
 	bq.Tags = append(bq.Tags, []string{
-		"#LIBWORKERUSER_EQ_" + bq.LibworkerUser,
+		TAG_PREFIX_LIBWORKER + bq.LibworkerUser,
 	}...)
 
 	if ConstainsInStringSet(rolesSet, []string{MASTER, LIBWORKER, KEEPER}) {
@@ -342,7 +343,7 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 			bq.KeeperNames = masterBr.KeeperNames
 		}
 		for _, k := range bq.KeeperUsers {
-			bq.Tags = append(bq.Tags, "#KEEPERUSER_EQ_"+k)
+			bq.Tags = append(bq.Tags, TAG_PREFIX_KEEPER+k)
 		}
 	}
 
@@ -362,6 +363,10 @@ func (p *Plugin) _getDisplayNameByUser(user string) (string, error) {
 		return "", errors.Wrapf(appErr, "Can't get user display name for user %s", user)
 	}
 
+	if userObj.LastName == "" && userObj.FirstName == "" {
+		return "", errors.New("Full name is required to be identified.")
+	}
+
 	return userObj.LastName + userObj.FirstName, nil
 }
 
@@ -373,17 +378,17 @@ func (p *Plugin) _distributeWorker(libworkers []string) string {
 
 func (p *Plugin) _setTags(status string, br *BorrowRequest) {
 
-	stag := "#STATUS_EQ_" + status
+	stag := TAG_PREFIX_STATUS + status
 
 	for i, tag := range br.Tags {
-		if strings.HasPrefix(tag, "#STATUS_EQ_") {
+		if strings.HasPrefix(tag, TAG_PREFIX_STATUS) {
 			br.Tags[i] = stag
 			return
 		}
 	}
 
 	br.Tags = append(br.Tags, []string{
-		"#STATUS_EQ_" + status,
+		TAG_PREFIX_STATUS + status,
 	}...)
 
 }

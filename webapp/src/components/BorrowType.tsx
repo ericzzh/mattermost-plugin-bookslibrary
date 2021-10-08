@@ -44,45 +44,16 @@ import AccordionSummary from "@material-ui/core/AccordionSummary";
 import AccordionDetails from "@material-ui/core/AccordionDetails";
 import ExpandMoreIcon from "@material-ui/icons/ExpandMore";
 
+const STATUS_REQUESTED = "R";
+const STATUS_CONFIRMED = "C";
+const STATUS_DELIVIED = "D";
+const STATUS_RENEW_REQUESTED = "RR";
+const STATUS_RENEW_CONFIRMED = "RC";
+const STATUS_RETURN_REQUESTED = "RTR";
+const STATUS_RETURN_CONFIRMED = "RTC";
+const STATUS_RETURNED = "RT";
+
 const { formatText, messageHtmlToComponent } = window.PostUtils;
-
-interface BorrowRequest {
-    book_post_id: string;
-    book_id: string;
-    book_name: string;
-    author: string;
-    borrower_user: string;
-    borrower_name: string;
-    libworker_user: string;
-    libworker_name: string;
-    keeper_users: string[];
-    keeper_names: string[];
-    request_date: number;
-    confirm_date: number;
-    delivery_date: number;
-    renew_request_date: number;
-    renew_confirm_date: number;
-    return_request_date: number;
-    return_confrrm_date: number;
-    return_delivery_date: number;
-    workflow_type: string;
-    workflow: string[];
-    status: string;
-    tags: string[];
-}
-
-interface Borrow {
-    // put the dataOrImage to be first so as to hide the record of Thread view
-    dataOrImage: BorrowRequest;
-    role: "MASTER" | "BORROWER" | "LIBWORKER" | "KEEPER";
-    relations_keys: {
-        book: string;
-        master: string;
-        borrower: string;
-        libworker: string;
-        keepers: string;
-    };
-}
 
 const TEXT: Record<string, string> = {
     BORROW: "借书流程",
@@ -108,14 +79,6 @@ const TEXT: Record<string, string> = {
 };
 
 const useStyles = makeStyles((theme) => ({
-    paper: {
-        padding: theme.spacing(2),
-        margin: "auto",
-        maxWidth: "100%",
-        "& svg": {
-            fontSize: "1rem",
-        },
-    },
     img_wrapper: {
         [theme.breakpoints.up("xs")]: {
             width: 125 * 0.8,
@@ -130,17 +93,6 @@ const useStyles = makeStyles((theme) => ({
         maxWidth: "100%",
         maxHeight: "100%",
         float: "left",
-    },
-    headStatus: {
-        backgroundColor: "red",
-        [theme.breakpoints.up("xs")]: {
-            width: "2rem",
-            height: "2rem",
-        },
-        [theme.breakpoints.up("sm")]: {
-            width: "2rem",
-            height: "2rem",
-        },
     },
     headStatusLabel: {
         [theme.breakpoints.up("xs")]: {
@@ -313,9 +265,13 @@ function BorrowType(props: any) {
     // const dispatch = useDispatch();
 
     let borrow: Borrow;
+    let borrowReq: BorrowRequest;
+    let currentStep: Step;
 
     try {
         borrow = JSON.parse(message);
+        borrowReq = borrow.dataOrImage;
+        currentStep = borrowReq.workflow[borrowReq.step_index];
     } catch (error) {
         const formattedText = messageHtmlToComponent(formatText(message));
         return <div> {formattedText} </div>;
@@ -333,6 +289,66 @@ function BorrowType(props: any) {
     // )}
     //
 
+    const StyledHeadStatus = styled(Avatar)(({ theme }) => ({
+        headStatus: {
+            backgroundColor: "red",
+            [theme.breakpoints.up("xs")]: {
+                width: "2rem",
+                height: "2rem",
+            },
+            [theme.breakpoints.up("sm")]: {
+                width: "2rem",
+                height: "2rem",
+            },
+        },
+    }));
+
+    const checkExpire = () => {};
+
+    const headStatus = (
+        <Grid container>
+            <Grid item>
+                {checkExpire() && (
+                    <StyledHeadStatus>
+                        <AlarmOnIcon />
+                    </StyledHeadStatus>
+                )}
+            </Grid>
+        </Grid>
+    );
+
+    const canDelete = () => {
+        if (
+            currentStep.status === STATUS_REQUESTED ||
+            currentStep.status === STATUS_CONFIRMED ||
+            currentStep.status === STATUS_RETURNED
+        ) {
+            return true;
+        }
+
+        return false;
+    };
+
+    const buttonbar = (
+        <Grid container justifyContent={"flex-end"}>
+            {canDelete() && (
+                <IconButton>
+                    <DeleteIcon />
+                </IconButton>
+            )}
+        </Grid>
+    );
+
+    const titleBar = (
+        <Grid item container alignItems={"center"}>
+            <Grid item xs={8}>
+                {headStatus}
+            </Grid>
+            <Grid item xs={4}>
+                {buttonbar}
+            </Grid>
+        </Grid>
+    );
     const StyledWFStepper = styled(Stepper)(({ theme }) => ({
         "& svg": {
             fontSize: "2rem",
@@ -346,12 +362,12 @@ function BorrowType(props: any) {
         alignSelf: "flex-end",
     }));
 
-    const StyledWFTypeChip = styled(Chip)(({theme})=>({
+    const StyledWFTypeChip = styled(Chip)(({ theme }) => ({
         width: "30%",
         height: "2rem",
-        marginTop : "1.5rem",
-        fontSize: '1.2rem',
-      }))
+        marginTop: "1.5rem",
+        fontSize: "1.2rem",
+    }));
 
     const workflow = (
         <Grid container direction={"column"}>
@@ -457,34 +473,6 @@ function BorrowType(props: any) {
         </Grid>
     );
 
-    const headStatus = (
-        <Grid container>
-            <Grid item>
-                <Avatar classes={{ root: classes.headStatus }}>
-                    <AlarmOnIcon />
-                </Avatar>
-            </Grid>
-        </Grid>
-    );
-
-    const buttonbar = (
-        <Grid container justifyContent={"flex-end"}>
-            <IconButton>
-                <DeleteIcon />
-            </IconButton>
-        </Grid>
-    );
-
-    const titleBar = (
-        <Grid item container alignItems={"center"}>
-            <Grid item xs={8}>
-                {headStatus}
-            </Grid>
-            <Grid item xs={4}>
-                {buttonbar}
-            </Grid>
-        </Grid>
-    );
     const participants = (
         <Grid container spacing={1}>
             <Grid item>
@@ -578,13 +566,23 @@ function BorrowType(props: any) {
         </Grid>
     );
 
+    const StyledPaper = styled(Paper)(({ theme }) => ({
+        padding: theme.spacing(2),
+        margin: "auto",
+        maxWidth: "100%",
+        position: "relative",
+        "& svg": {
+            fontSize: "1rem",
+        },
+    }));
+
     return (
-        <Paper className={classes.paper}>
+        <StyledPaper>
             <Grid container direction={"column"}>
                 <Grid item>{titleBar}</Grid>
                 <Grid item>{main}</Grid>
             </Grid>
-        </Paper>
+        </StyledPaper>
     );
 }
 

@@ -7,6 +7,10 @@ import (
 	"sync"
 )
 
+const (
+	PLUGIN_ID = "com.github.ericzzh.mattermost-plugin-bookslibrary"
+)
+
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.
 type Plugin struct {
 	plugin.MattermostPlugin
@@ -29,6 +33,9 @@ type Plugin struct {
 	booksInvChannel *model.Channel
 
 	borrowTimes int
+
+	maxRenewTimes int
+	expiredDays   int
 }
 
 // ServeHTTP demonstrates a plugin that handles HTTP requests by greeting the world.

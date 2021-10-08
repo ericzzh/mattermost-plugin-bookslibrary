@@ -70,20 +70,21 @@ func TestBooks(t *testing.T) {
 	someBooksUpl := Books{
 		{
 			&BookPublic{
-				Id:             "zzh-book-001",
-				Name:           "a test book",
-				NameEn:         "a test book",
-				Category1:      "C1",
-				Category2:      "C2",
-				Category3:      "C3",
-				Author:         "zzh",
-				AuthorEn:       "zzh",
-				Translator:     "eric",
-				TranslatorEn:   "eric",
-				Publisher:      "pub1",
-				PublisherEn:    "pub1En",
-				PublishDate:    "20200821",
-				LibworkerUsers: []string{"worker1", "worker2"},
+				Id:                "zzh-book-001",
+				Name:              "a test book",
+				NameEn:            "a test book",
+				Category1:         "C1",
+				Category2:         "C2",
+				Category3:         "C3",
+				Author:            "zzh",
+				AuthorEn:          "zzh",
+				Translator:        "eric",
+				TranslatorEn:      "eric",
+				Publisher:         "pub1",
+				PublisherEn:       "pub1En",
+				PublishDate:       "20200821",
+				LibworkerUsers:    []string{"worker1", "worker2"},
+				IsAllowedToBorrow: true,
 			},
 			&BookPrivate{
 				KeeperUsers: []string{"kpuser1", "kpuser2"},
@@ -95,21 +96,22 @@ func TestBooks(t *testing.T) {
 		},
 		{
 			&BookPublic{
-				Id:             "zzh-book-002",
-				Name:           "a second test book",
-				NameEn:         "a second test book",
-				Category1:      "C1",
-				Category2:      "C2",
-				Category3:      "C3",
-				Author:         "zzh",
-				AuthorEn:       "zzh",
-				Translator:     "eric",
-				TranslatorEn:   "eric",
-				Publisher:      "pub1",
-				PublisherEn:    "pub1En",
-				PublishDate:    "20200821",
-				LibworkerUsers: []string{"worker1", "worker2"},
-				LibworkerNames: []string{"wkname1", "wkname2"},
+				Id:                "zzh-book-002",
+				Name:              "a second test book",
+				NameEn:            "a second test book",
+				Category1:         "C1",
+				Category2:         "C2",
+				Category3:         "C3",
+				Author:            "zzh",
+				AuthorEn:          "zzh",
+				Translator:        "eric",
+				TranslatorEn:      "eric",
+				Publisher:         "pub1",
+				PublisherEn:       "pub1En",
+				PublishDate:       "20200821",
+				LibworkerUsers:    []string{"worker1", "worker2"},
+				LibworkerNames:    []string{"wkname1", "wkname2"},
+				IsAllowedToBorrow: true,
 			},
 			&BookPrivate{
 				KeeperUsers: []string{"kpuser1", "kpuser2"},
@@ -132,6 +134,8 @@ func TestBooks(t *testing.T) {
 
 	reqJson, _ := json.Marshal(req)
 
+	// fmt.Println(string(reqJson))
+
 	resetSomeBooksInDB := func() Books {
 		return Books{
 			{
@@ -153,10 +157,10 @@ func TestBooks(t *testing.T) {
 					LibworkerNames:    []string{"wkname1", "wkname2"},
 					IsAllowedToBorrow: true,
 					Tags: []string{
-						"#ID_EQ_zzh-book-001",
-						"#CATEGORY1_EQ_C1",
-						"#CATEGORY2_EQ_C2",
-						"#CATEGORY3_EQ_C3",
+						TAG_PREFIX_ID + "zzh-book-001",
+						TAG_PREFIX_C1 + "C1",
+						TAG_PREFIX_C2 + "C2",
+						TAG_PREFIX_C3 + "C3",
 					},
 					Relations: Relations{
 						REL_BOOK_PRIVATE:   booksPids[0]["pri_id"],
@@ -206,10 +210,10 @@ func TestBooks(t *testing.T) {
 					LibworkerNames:    []string{"wkname1", "wkname2"},
 					IsAllowedToBorrow: true,
 					Tags: []string{
-						"#ID_EQ_zzh-book-002",
-						"#CATEGORY1_EQ_C1",
-						"#CATEGORY2_EQ_C2",
-						"#CATEGORY3_EQ_C3",
+						TAG_PREFIX_ID + "zzh-book-002",
+						TAG_PREFIX_C1 + "C1",
+						TAG_PREFIX_C2 + "C2",
+						TAG_PREFIX_C3 + "C3",
 					},
 					Relations: Relations{
 						REL_BOOK_PRIVATE:   booksPids[1]["pri_id"],
@@ -359,15 +363,15 @@ func TestBooks(t *testing.T) {
 			}
 			switch part := booksPartById[id].(type) {
 			case *BookPublic:
-				j, _ := json.Marshal(part)
+				j, _ := json.MarshalIndent(part,"","  ")
 				post.ChannelId = td.BookChIdPub
 				post.Message = string(j)
 			case *BookPrivate:
-				j, _ := json.Marshal(part)
+				j, _ := json.MarshalIndent(part,"","  ")
 				post.ChannelId = td.BookChIdPri
 				post.Message = string(j)
 			case *BookInventory:
-				j, _ := json.Marshal(part)
+				j, _ := json.MarshalIndent(part,"","  ")
 				post.ChannelId = td.BookChIdInv
 				post.Message = string(j)
 			}
@@ -389,7 +393,9 @@ func TestBooks(t *testing.T) {
 		api.On("CreatePost", mock.MatchedBy(td.MatchPostByChannel(mockChannelPtr.chid))).Return(
 			func(post *model.Post) *model.Post {
 				assert.Equalf(t, plugin.botID, post.UserId, "should be bot id")
-				assert.Equalf(t, "custom_book_type", post.Type, "should be custom_book_type")
+				if booksChidByPid[post.Id] == td.BookChIdPub {
+					assert.Equalf(t, "custom_book_type", post.Type, "should be custom_book_type")
+				}
 				if !errctrls[mockChannelPtr.createdCount][mockChannelPtr.chid].created {
 					post.Id = booksPids[mockChannelPtr.createdCount][mockChannelPtr.postIdType]
 					return post
@@ -444,6 +450,7 @@ func TestBooks(t *testing.T) {
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/books", bytes.NewReader(reqJson))
+		// fmt.Println(string(reqJson))
 		plugin.ServeHTTP(nil, w, r)
 
 		// validate messages
@@ -711,6 +718,8 @@ func TestBooks(t *testing.T) {
 
 			reqJson, _ := json.Marshal(req)
 
+			// fmt.Println(string(reqJson))
+
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("POST", "/books", bytes.NewReader(reqJson))
 
@@ -768,6 +777,54 @@ func TestBooks(t *testing.T) {
 				}
 			}
 
+		}
+
+	})
+
+	t.Run("update_pub_only", func(t *testing.T) {
+		var thisBookUpl Book
+		//there is map in, so have to use deepcopy
+		DeepCopy(&thisBookUpl, &someBooksUpl[0])
+
+                thisBookUpl.BookPublic.IsAllowedToBorrow = false
+
+		thisBookUpl.BookPrivate = nil
+		thisBookUpl.BookInventory = nil
+		thisBookUpl.Upload = &Upload{
+			Post_id: booksPids[0]["pub_id"],
+		}
+
+		var theseBooksUpl Books
+		theseBooksUpl = append(theseBooksUpl, thisBookUpl)
+
+		booksJson, _ := json.Marshal(theseBooksUpl)
+
+		req := BooksRequest{
+			Action:  BOOKS_ACTION_UPLOAD,
+			ActUser: td.ABook.LibworkerNames[0],
+			Body:    string(booksJson),
+		}
+
+		reqJson, _ := json.Marshal(req)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/books", bytes.NewReader(reqJson))
+
+		resetMockChannels(mockChannels)
+		someBooksInDB = resetSomeBooksInDB()
+		errctrls = initErrControl()
+
+		plugin.ServeHTTP(nil, w, r)
+
+		for _, mockChannel := range mockChannels {
+			switch mockChannel.postIdType {
+			case "pub_id":
+				assert.Equalf(t, 1, mockChannel.updatedCount, "no updated of pub_id")
+			case "pri_id":
+				assert.Equalf(t, 0, mockChannel.updatedCount, "no updated of pri_id")
+			case "inv_id":
+				assert.Equalf(t, 0, mockChannel.updatedCount, "no updated of inv_id")
+			}
 		}
 
 	})
@@ -1053,10 +1110,10 @@ func TestBooks(t *testing.T) {
 
 		someBooksInDB = resetSomeBooksInDB()
 
-                someBooksInDB[0].Stock = 7
-                someBooksInDB[0].TransmitOut = 0
-                someBooksInDB[0].Lending = 0
-                someBooksInDB[0].TransmitIn = 0
+		someBooksInDB[0].Stock = 7
+		someBooksInDB[0].TransmitOut = 0
+		someBooksInDB[0].Lending = 0
+		someBooksInDB[0].TransmitIn = 0
 
 		type delcnt map[string]int
 

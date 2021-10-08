@@ -13,6 +13,7 @@ import (
 const minimumServerVersion = "5.30.0"
 
 func (p *Plugin) OnActivate() error {
+
 	if err := p.checkServerVersion(); err != nil {
 		return err
 	}

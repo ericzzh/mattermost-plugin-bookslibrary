@@ -1,6 +1,7 @@
 import React from "react";
 import PropTypes from "prop-types";
-import { makeStyles } from "@material-ui/core/styles";
+import { styled } from "@material-ui/core/styles";
+// import { makeStyles } from "@material-ui/core/styles";
 import Grid from "@material-ui/core/Grid";
 import Paper from "@material-ui/core/Paper";
 import Typography from "@material-ui/core/Typography";
@@ -14,6 +15,8 @@ import { searchForTerm } from "actions/post_action";
 import { Client4 } from "mattermost-redux/client";
 import manifest from "../manifest";
 import { getCurrentUser } from "mattermost-redux/selectors/entities/common";
+import { getChannel } from "mattermost-redux/selectors/entities/channels";
+import { getCurrentTeam } from "mattermost-redux/selectors/entities/teams";
 import { getConfig } from "mattermost-redux/selectors/entities/general";
 import { useSelector } from "react-redux";
 import Accordion from "@material-ui/core/Accordion";
@@ -27,36 +30,27 @@ import ButtonGroup from "@material-ui/core/ButtonGroup";
 import useMediaQuery from "@material-ui/core/useMediaQuery";
 import { useTheme } from "@material-ui/core/styles";
 // import { IntlProvider, FormattedMessage, FormattedNumber } from "react-intl";
+import { GlobalState } from "mattermost-redux/types/store";
+import { Channel } from "mattermost-redux/types/channels";
+import InProgress from "./InProgress";
+import MsgBox, { MsgBoxProps } from "./MsgBox";
 
-interface Book {
-    post_id: string;
-    id: string;
-    name: string;
-    name_en: string;
-    category1: string;
-    category2: string;
-    category3: string;
-    author: string;
-    author_en: string;
-    translator: string;
-    translator_en: string;
-    publisher: string;
-    publisher_en: string;
-    publish_date: string;
-    introduction: string;
-    book_index: string;
-    libworker_users: string[];
-    libworker_names: string[];
-    keeper_users: string[];
-    keeper_names: string[];
-    isAllowedToBorrow: boolean;
-    tags: string[];
-}
-
-interface BorrowRequestKey {
-    book_post_id: string;
-    borrower_user: string;
-}
+const TEXT: Record<string, string> = {
+    BOOK_INDEX_TITLE: "目录",
+    BOOK_INTRO_TITLE: "简介",
+    NOTHING: "暂无",
+    BTN_UPL_PIC_TITLE: "图片",
+    BTN_UPL_INTRO_TITLE: "简介",
+    BTN_UPL_INDEX_TITLE: "目录",
+    TOGGLE_ALLOWED_SUCC: "设置成功",
+    TOGGLE_ALLOWED_ERROR: "设置失败,错误:",
+    BORROW_SUCC: "借阅成功",
+    BORROW_ERROR: "借阅失败,错误:",
+    CONFIRM_BORROW: "借阅:",
+    CONFIRM_TOGGLE_BORROW: "转换可借阅状态:",
+    LINK_TO_PRI: "非公开",
+    LINK_TO_INV: "库存",
+};
 
 const { formatText, messageHtmlToComponent } = window.PostUtils;
 
@@ -65,122 +59,35 @@ BookType.propTypes = {
     theme: PropTypes.object.isRequired,
 };
 
-const useStyles = makeStyles((theme) => ({
-    bookc_paper: {
-        padding: theme.spacing(2),
-        margin: "auto",
-        maxWidth: "100%",
-    },
-    bookc_img: {
-        maxWidth: "100%",
-        maxHeight: "100%",
-        float: "left",
-    },
-    img_wrapper: {
-        [theme.breakpoints.up("xs")]: {
-            width: 125 * 0.8,
-            height: 160 * 0.8,
-        },
-        [theme.breakpoints.up("sm")]: {
-            width: 125 * 1.5,
-            height: 160 * 1.5,
-        },
-    },
-    bookc_button: {
-        width: 50,
-        height: 50,
-    },
-    longInfoWithAcc: {
-        width: "100%",
-    },
-    bookCategoryOl: {
-        paddingLeft: "0 !important",
-    },
-    bookCategory: {
-        [theme.breakpoints.up("xs")]: {
-            fontSize: "0.8rem",
-        },
-        [theme.breakpoints.up("sm")]: {
-            fontSize: "1.2rem",
-        },
-    },
-    bookName: {
-        [theme.breakpoints.up("xs")]: {
-            fontSize: "1.5rem",
-            fontWeight: "bold",
-        },
-        [theme.breakpoints.up("sm")]: {
-            fontSize: "3rem",
-            fontWeight: "bold",
-        },
-    },
-    englishName: {
-        [theme.breakpoints.up("xs")]: {
-            fontSize: "0.8rem",
-        },
-        [theme.breakpoints.up("sm")]: {
-            fontSize: "1rem",
-        },
-    },
-    authorName: {
-        [theme.breakpoints.up("xs")]: {
-            fontSize: "1rem",
-            fontWeight: "bold",
-        },
-        [theme.breakpoints.up("sm")]: {
-            fontSize: "1.5rem",
-            fontWeight: "bold",
-        },
-    },
-    bookAttr: {
-        [theme.breakpoints.up("xs")]: {
-            fontSize: "0.8rem",
-            marginTop: "-1.5rem",
-        },
-        [theme.breakpoints.up("sm")]: {
-            fontSize: "1rem",
-        },
-    },
-    intro: {
-        [theme.breakpoints.up("xs")]: {
-            fontSize: "1rem",
-        },
-        [theme.breakpoints.up("sm")]: {
-            fontSize: "1.5rem",
-        },
-    },
-    index: {
-        [theme.breakpoints.up("xs")]: {
-            fontSize: "1rem",
-        },
-        [theme.breakpoints.up("sm")]: {
-            fontSize: "1.5rem",
-        },
-    },
-    libworker: {
-        [theme.breakpoints.up("xs")]: {
-            fontSize: "0.8rem",
-        },
-        [theme.breakpoints.up("sm")]: {
-            fontSize: "1rem",
-        },
-    },
-
-    libworkerColor: {
-        backgroundColor: "green",
-    },
-}));
-
 function BookType(props: any) {
-    const classes = useStyles();
     const post = { ...props.post };
     const message = post.message || "";
     const dispatch = useDispatch();
     const currentUser = useSelector(getCurrentUser);
     const config = useSelector(getConfig);
+    const currentChannel = useSelector<GlobalState, Channel>((state) =>
+        getChannel(state, post.channel_id)
+    );
+    const currentTeam = useSelector(getCurrentTeam);
     const theme = useTheme();
     const matchesSm = useMediaQuery(theme.breakpoints.up("sm"));
-    const matchesXs = useMediaQuery(theme.breakpoints.up("xs"));
+    // const matchesXs = useMediaQuery(theme.breakpoints.up("xs"));
+
+    //hooks must be placed before parse book JSON
+    const [loading, setLoading] = React.useState(false);
+    const [msgBox, setMsgBox] = React.useState<MsgBoxProps>({
+        open: false,
+        text: "",
+        serverity: "success",
+    });
+    const onCloseMsg = () => {
+        setMsgBox({
+            open: false,
+            text: "",
+            serverity: "success",
+        });
+    };
+
     let book: Book;
 
     try {
@@ -192,60 +99,230 @@ function BookType(props: any) {
 
     // It's enough to just send back a post id.
     const handleBorrow = async () => {
+        if (!confirm(TEXT["CONFIRM_BORROW"] + book.name_pub)) {
+            return;
+        }
+
         const request: BorrowRequestKey = {
             book_post_id: props.post.id,
             borrower_user: currentUser.username,
         };
-        const data = await Client4.doFetch<{ error: string }>(
+        setLoading(true);
+        const data = await Client4.doFetch<Result>(
             `/plugins/${manifest.id}/borrow`,
             {
                 method: "POST",
                 body: JSON.stringify(request),
             }
         );
+        setLoading(false);
 
-        if (!data.error) {
-            console.error(data.error);
+        if (data.error) {
+            setMsgBox({
+                open: true,
+                text: TEXT["BORROW_ERROR"] + data.error,
+                serverity: "error",
+            });
+            console.error(data);
+            return;
         }
+
+        setMsgBox({
+            open: true,
+            text: TEXT["BORROW_SUCC"],
+            serverity: "success",
+        });
     };
 
-    // <Link
-    //     color="inherit"
-    //     onClick={(e) =>
-    //         dispatch(searchForTerm("#" + book.publisher))
-    //     }
-    // >
-    //     {book.publisher}
-    // </Link>
+    const handleToggleAllowed = async (e: any) => {
+        if (!confirm(TEXT["CONFIRM_TOGGLE_BORROW"] + book.name_pub)) {
+            return;
+        }
+        book.isAllowedToBorrow = e.target.checked;
+        book.post_id = props.post.id;
+        const books = [book];
+        const body = JSON.stringify(books);
+        const request: BooksRequest = {
+            action: "UPLOAD",
+            act_user: currentUser.username,
+            body: body,
+        };
+        setLoading(true);
+        const data = await Client4.doFetch<Result>(
+            `/plugins/${manifest.id}/books`,
+            {
+                method: "POST",
+                body: JSON.stringify(request),
+            }
+        );
+        setLoading(false);
+        if (data.error) {
+            setMsgBox({
+                open: true,
+                text: TEXT["TOGGLE_ALLOWED_ERROR"] + data.error,
+                serverity: "error",
+            });
+            console.error(data);
+            return;
+        }
+
+        setMsgBox({
+            open: true,
+            text: TEXT["TOGGLE_ALLOWED_SUCC"],
+            serverity: "success",
+        });
+    };
+
+    const StyledImgWrapper = styled(Grid)(({ theme }) => ({
+        [theme.breakpoints.up("xs")]: {
+            width: 125 * 0.8,
+            height: 160 * 0.8,
+        },
+        [theme.breakpoints.up("sm")]: {
+            width: 125 * 1.5,
+            height: 160 * 1.5,
+        },
+        "& img": {
+            maxWidth: "100%",
+            maxHeight: "100%",
+            float: "left",
+        },
+    }));
+
+    const StyledBookMainInfo = styled(Grid)(({ theme }) => ({
+        "& .BookBreadcrumb": {
+            "& li": {
+                [theme.breakpoints.up("xs")]: {
+                    fontSize: "0.8rem",
+                },
+                [theme.breakpoints.up("sm")]: {
+                    fontSize: "1.2rem",
+                },
+            },
+            "& ol": {
+                paddingLeft: "0 !important",
+            },
+        },
+        "& .BookName": {
+            [theme.breakpoints.up("xs")]: {
+                fontSize: "1.5rem",
+                fontWeight: "bold",
+            },
+            [theme.breakpoints.up("sm")]: {
+                fontSize: "3rem",
+                fontWeight: "bold",
+            },
+        },
+        "&  .EnglishName": {
+            [theme.breakpoints.up("xs")]: {
+                fontSize: "0.8rem",
+            },
+            [theme.breakpoints.up("sm")]: {
+                fontSize: "1rem",
+            },
+        },
+        "& .AuthorName": {
+            [theme.breakpoints.up("xs")]: {
+                fontSize: "1rem",
+                fontWeight: "bold",
+                marginTop: "0.5rem",
+            },
+            [theme.breakpoints.up("sm")]: {
+                fontSize: "1.5rem",
+                fontWeight: "bold",
+                marginTop: "0.5rem",
+            },
+        },
+        "& .BookAttribute": {
+            [theme.breakpoints.up("xs")]: {
+                fontSize: "0.8rem",
+                marginTop: "-1.5rem",
+            },
+            [theme.breakpoints.up("sm")]: {
+                fontSize: "1rem",
+            },
+        },
+    }));
+    const bookBreadcrumb = (
+        <>
+            <Breadcrumbs className={"BookBreadcrumb"}>
+                <Link
+                    color="inherit"
+                    onClick={() =>
+                        dispatch(
+                            searchForTerm(
+                                "#c1_" +
+                                    book.category1 +
+                                    " in:" +
+                                    currentChannel.name
+                            )
+                        )
+                    }
+                >
+                    {book.category1}
+                </Link>
+                <Link
+                    color="inherit"
+                    onClick={() =>
+                        dispatch(
+                            searchForTerm(
+                                "#c2_" +
+                                    book.category2 +
+                                    " in:" +
+                                    currentChannel.name
+                            )
+                        )
+                    }
+                >
+                    {book.category2}
+                </Link>
+                <Link
+                    color="inherit"
+                    onClick={() =>
+                        dispatch(
+                            searchForTerm(
+                                "#c3_" +
+                                    book.category3 +
+                                    " in:" +
+                                    currentChannel.name
+                            )
+                        )
+                    }
+                >
+                    {book.category3}
+                </Link>
+            </Breadcrumbs>
+        </>
+    );
     const bookName = (
         <>
-            <div className={classes.bookName}>{book.name}</div>
-            <div className={classes.englishName}>{book.name_en}</div>
+            <div className={"BookName"}>{book.name_pub}</div>
+            <div className={"EnglishName"}>{book.name_en}</div>
             {matchesSm ? <br /> : <div />}
         </>
     );
 
     const author = (
         <>
-            <div className={classes.authorName}>{book.author}</div>
-            <div className={classes.englishName}>{book.author_en}</div>
+            <div className={"AuthorName"}>{book.author}</div>
+            <div className={"EnglishName"}>{book.author_en}</div>
             <br />
         </>
     );
     const publisher = (
         <>
-            <div className={classes.bookAttr}>{book.publisher}</div>
-            <div className={classes.englishName}>{book.publisher_en}</div>
+            <div className={"BookAttribute"}>{book.publisher}</div>
+            <div className={"EnglishName"}>{book.publisher_en}</div>
         </>
     );
     const pulishDate = (
         <>
-            <div className={classes.bookAttr}>{book.publish_date}</div>
+            <div className={"BookAttribute"}>{book.publish_date}</div>
         </>
     );
     const translator = (
         <>
-            <div className={classes.bookAttr}>{book.translator}</div>
+            <div className={"BookAttribute"}>{book.translator}</div>
         </>
     );
 
@@ -260,17 +337,58 @@ function BookType(props: any) {
         </Grid>
     );
 
+    const bookMain = (
+        <>
+            <Grid container spacing={1}>
+                <StyledImgWrapper item xs={matchesSm ? 2 : 4}>
+                    <img
+                        src={`${config.SiteURL}/plugins/${manifest.id}/public/info/${book.id_pub}/cover.jpeg`}
+                    />
+                </StyledImgWrapper>
+                <StyledBookMainInfo item xs={matchesSm ? 10 : 8}>
+                    <Grid container direction={"column"}>
+                        <Grid item> {bookBreadcrumb} </Grid>
+                        <Grid item>{bookName}</Grid>
+                        <Grid item> {bookAttribute} </Grid>
+                    </Grid>
+                </StyledBookMainInfo>
+            </Grid>
+        </>
+    );
+
+    const StyledBookinfo = styled(Grid)(({ theme }) => ({
+        "& .BookIntro": {
+            [theme.breakpoints.up("xs")]: {
+                fontSize: "1rem",
+            },
+            [theme.breakpoints.up("sm")]: {
+                fontSize: "1.5rem",
+            },
+        },
+        "& .BookIndex": {
+            [theme.breakpoints.up("xs")]: {
+                fontSize: "1rem",
+            },
+            [theme.breakpoints.up("sm")]: {
+                fontSize: "1.5rem",
+            },
+        },
+        "& .BookAccordion": {
+            width: "100%",
+        },
+    }));
+
     const bookIndex = (
         <Grid container>
-            <Accordion className={classes.longInfoWithAcc}>
+            <Accordion className={"BookAccordion"}>
                 <AccordionSummary
                     expandIcon={<ExpandMoreIcon />}
                     id="bookIndex-header"
                 >
-                    <div>{"目录"}</div>
+                    <div>{TEXT["BOOK_INDEX_TITLE"]}</div>
                 </AccordionSummary>
                 <AccordionDetails id="bookIndex-detail">
-                    {book.book_index ? book.book_index : "暂无"}
+                    {book.book_index ? book.book_index : TEXT["NOTHING"]}
                 </AccordionDetails>
             </Accordion>
         </Grid>
@@ -278,37 +396,64 @@ function BookType(props: any) {
 
     const bookIntro = (
         <Grid container>
-            <Accordion className={classes.longInfoWithAcc}>
+            <Accordion className={"BookAccordion"}>
                 <AccordionSummary
                     expandIcon={<ExpandMoreIcon />}
                     id="introduction-header"
                 >
-                    <div>{"简介"}</div>
+                    <div>{TEXT["BOOK_INTRO_TITLE"]}</div>
                 </AccordionSummary>
                 <AccordionDetails id="introduction-detail">
-                    {book.introduction ? book.introduction : "暂无"}
+                    {book.introduction ? book.introduction : TEXT["NOTHING"]}
                 </AccordionDetails>
             </Accordion>
         </Grid>
     );
 
     const bookInfo = (
-        <Grid container spacing={2}>
+        <StyledBookinfo container spacing={2}>
             <Grid item xs={12}>
                 <Typography>
-                    <div className={classes.intro}>{bookIntro}</div>
+                    <div className={"BookIntro"}>{bookIntro}</div>
                 </Typography>
             </Grid>
             <Grid item xs={12}>
                 <Typography>
-                    <div className={classes.index}>{bookIndex}</div>
+                    <div className={"BookIndex"}>{bookIndex}</div>
                 </Typography>
             </Grid>
-        </Grid>
+        </StyledBookinfo>
     );
 
+    const StyledBookState = styled(Grid)(({ theme }) => ({
+        "& .BorButton": {
+            width: 50,
+            height: 50,
+        },
+        "& .Libworker": {
+            "& .MuiChip-label": {
+                [theme.breakpoints.up("xs")]: {
+                    fontSize: "0.8rem",
+                },
+                [theme.breakpoints.up("sm")]: {
+                    fontSize: "1rem",
+                },
+            },
+            "& .MuiChip-colorPrimary": {
+                backgroundColor: "green",
+            },
+            [theme.breakpoints.up("xs")]: {
+                fontSize: "1rem",
+                fontWeight: "bold",
+            },
+            [theme.breakpoints.up("sm")]: {
+                fontSize: "1.5rem",
+                fontWeight: "bold",
+            },
+        },
+    }));
     const bookState = (
-        <Grid
+        <StyledBookState
             container
             alignItems={"center"}
             spacing={2}
@@ -318,12 +463,8 @@ function BookType(props: any) {
                 book.libworker_names.map((worker) => (
                     <>
                         {
-                            <Grid item className={classes.authorName}>
+                            <Grid item className={"Libworker"}>
                                 <Chip
-                                    classes={{
-                                        label: classes.libworker,
-                                        colorPrimary: classes.libworkerColor,
-                                    }}
                                     color="primary"
                                     size="medium"
                                     label={worker}
@@ -337,53 +478,14 @@ function BookType(props: any) {
                 <Fab
                     color="primary"
                     aria-label="borrow"
-                    className={classes.bookc_button}
+                    className={"BorButton"}
                     onClick={handleBorrow}
+                    disabled={book.isAllowedToBorrow ? false : true}
                 >
                     <BorrowIcon />
                 </Fab>
             </Grid>
-        </Grid>
-    );
-
-    const bookBreadcrumb = (
-        <>
-            <Breadcrumbs
-                classes={{
-                    li: classes.bookCategory,
-                    ol: classes.bookCategoryOl,
-                }}
-            >
-                <Link color="inherit">{book.category1}</Link>
-                <Link color="inherit">{book.category2}</Link>
-                <Link color="inherit">{book.category3}</Link>
-            </Breadcrumbs>
-        </>
-    );
-
-    const bookMain = (
-        <>
-            <Grid container spacing={1}>
-                <Grid
-                    item
-                    xs={matchesSm ? 2 : 4}
-                    className={classes.img_wrapper}
-                >
-                    <img
-                        className={classes.bookc_img}
-                        alt="no image"
-                        src={`${config.SiteURL}/plugins/${manifest.id}/public/s4216567.jpeg`}
-                    />
-                </Grid>
-                <Grid item xs={matchesSm ? 10 : 8}>
-                    <Grid container direction={"column"}>
-                        <Grid item> {bookBreadcrumb} </Grid>
-                        <Grid item>{bookName}</Grid>
-                        <Grid item> {bookAttribute} </Grid>
-                    </Grid>
-                </Grid>
-            </Grid>
-        </>
+        </StyledBookState>
     );
 
     const main = (
@@ -394,28 +496,65 @@ function BookType(props: any) {
         </Grid>
     );
 
+
     const buttons = (
         <Grid container justifyContent={"flex-end"} alignItems={"center"}>
             <Grid item>
                 <ButtonGroup size="small">
-                    <Button>图片</Button>
-                    <Button>简介</Button>
-                    <Button>目录</Button>
+                    <Button
+                        href={`/${currentTeam.name}/pl/${book.relations_pub.inventory}`}
+                    >
+                        {TEXT["LINK_TO_INV"]}
+                    </Button>
+                    <Button
+                        href={`/${currentTeam.name}/pl/${book.relations_pub.private}`}
+                    >
+                        {TEXT["LINK_TO_PRI"]}
+                    </Button>
+                    <Button>{TEXT["BTN_UPL_PIC_TITLE"]}</Button>
+                    <Button>{TEXT["BTN_UPL_INTRO_TITLE"]}</Button>
+                    <Button>{TEXT["BTN_UPL_INDEX_TITLE"]}</Button>
                 </ButtonGroup>
             </Grid>
             <Grid item>
-                <Switch name="isAllowedToBorrow" />
+                <Switch
+                    checked={book.isAllowedToBorrow}
+                    name="isAllowedToBorrow"
+                    onChange={handleToggleAllowed}
+                />
             </Grid>
         </Grid>
     );
+
+    const StyledPaper = styled(Paper)(({ theme }) => ({
+        padding: theme.spacing(2),
+        margin: "auto",
+        maxWidth: "100%",
+        position: "relative",
+    }));
+
+    const isLibworker = () => {
+        const libworkers = book.libworker_users;
+        if (
+            libworkers.findIndex((user) => user == currentUser.username) !== -1
+        ) {
+            return true;
+        }
+        return false;
+    };
+
     return (
         // <IntlProvider locale="en" defaultLocale="en">
-        <Paper className={classes.bookc_paper}>
-            <Grid container direction={"column"}>
-                <Grid item>{main}</Grid>
-                <Grid item>{buttons}</Grid>
-            </Grid>
-        </Paper>
+        <>
+            <StyledPaper>
+                <Grid container direction={"column"}>
+                    <Grid item>{main}</Grid>
+                    <Grid item>{isLibworker() ? buttons : <></>}</Grid>
+                </Grid>
+                <InProgress open={loading} />
+                <MsgBox {...msgBox} close={onCloseMsg} />
+            </StyledPaper>
+        </>
         // </IntlProvider>
     );
 }

@@ -19,7 +19,7 @@ import (
 var logSwitch bool
 
 type mockapiOptons struct {
-	excludeBookUpdAPI     bool
+	excludeBookUpdAPI bool
 }
 type TestData struct {
 	ABook              *Book
@@ -433,7 +433,9 @@ func NewTestData() *TestData {
 			team: &model.Team{
 				Id: td.BorTeamId,
 			},
-			borrowTimes: 2,
+			borrowTimes:   2,
+			maxRenewTimes: 2,
+			expiredDays:   30,
 		}
 	}
 

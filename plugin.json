@@ -78,6 +78,22 @@
         "help_text": "The max books can be borrowed befored returned",
         "placeholder": "",
         "default": 2
+      },
+      {
+        "key": "MaxRenewTimes",
+        "display_name": "Max allowed renew times",
+        "type": "number",
+        "help_text": "Max allowed renew times",
+        "placeholder": "",
+        "default": 1
+      },
+      {
+        "key": "ExpiredDays",
+        "display_name": "Expired days",
+        "type": "number",
+        "help_text": "Expired days",
+        "placeholder": "",
+        "default": 30
       }
     ]
   }

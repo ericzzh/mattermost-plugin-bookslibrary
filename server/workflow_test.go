@@ -130,7 +130,7 @@ func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
 
 	var master Borrow
 
-	json.Unmarshal([]byte(env.realbrPosts[env.td.BorChannelId].Message), &master)
+	json.Unmarshal([]byte(env.realbrUpdPosts[env.td.BorChannelId].Message), &master)
 	worker := master.DataOrImage.LibworkerUser
 	env.worker = worker
 	var worker_botId string
@@ -248,11 +248,11 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_CONFIRMED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_CONFIRMED,
 							},
 						},
 					},
@@ -264,9 +264,9 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#STATUS_EQ_" + STATUS_CONFIRMED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_STATUS + STATUS_CONFIRMED,
 							},
 						},
 					},
@@ -278,11 +278,11 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_CONFIRMED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_CONFIRMED,
 							},
 						},
 					},
@@ -294,10 +294,10 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 							Tags: []string{
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_CONFIRMED,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_CONFIRMED,
 							},
 						},
 					},
@@ -309,10 +309,10 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 							Tags: []string{
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_CONFIRMED,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_CONFIRMED,
 							},
 						},
 					},
@@ -333,11 +333,11 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_DELIVIED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_DELIVIED,
 							},
 						},
 					},
@@ -349,9 +349,9 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#STATUS_EQ_" + STATUS_DELIVIED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_STATUS + STATUS_DELIVIED,
 							},
 						},
 					},
@@ -363,11 +363,11 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_DELIVIED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_DELIVIED,
 							},
 						},
 					},
@@ -378,10 +378,10 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_DELIVIED,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_DELIVIED,
 							},
 						},
 					},
@@ -392,10 +392,10 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_DELIVIED,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_DELIVIED,
 							},
 						},
 					},
@@ -415,11 +415,11 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RENEW_REQUESTED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RENEW_REQUESTED,
 							},
 						},
 					},
@@ -431,9 +431,9 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#STATUS_EQ_" + STATUS_RENEW_REQUESTED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_STATUS + STATUS_RENEW_REQUESTED,
 							},
 						},
 					},
@@ -445,11 +445,11 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RENEW_REQUESTED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RENEW_REQUESTED,
 							},
 						},
 					},
@@ -460,10 +460,10 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RENEW_REQUESTED,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RENEW_REQUESTED,
 							},
 						},
 					},
@@ -474,10 +474,10 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RENEW_REQUESTED,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RENEW_REQUESTED,
 							},
 						},
 					},
@@ -497,11 +497,11 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RENEW_CONFIRMED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RENEW_CONFIRMED,
 							},
 						},
 					},
@@ -513,9 +513,9 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#STATUS_EQ_" + STATUS_RENEW_CONFIRMED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_STATUS + STATUS_RENEW_CONFIRMED,
 							},
 						},
 					},
@@ -527,11 +527,11 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RENEW_CONFIRMED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RENEW_CONFIRMED,
 							},
 						},
 					},
@@ -542,10 +542,10 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RENEW_CONFIRMED,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RENEW_CONFIRMED,
 							},
 						},
 					},
@@ -556,10 +556,10 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RENEW_CONFIRMED,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RENEW_CONFIRMED,
 							},
 						},
 					},
@@ -579,11 +579,11 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RETURN_REQUESTED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RETURN_REQUESTED,
 							},
 						},
 					},
@@ -595,9 +595,9 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#STATUS_EQ_" + STATUS_RETURN_REQUESTED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_STATUS + STATUS_RETURN_REQUESTED,
 							},
 						},
 					},
@@ -609,11 +609,11 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RETURN_REQUESTED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RETURN_REQUESTED,
 							},
 						},
 					},
@@ -625,10 +625,10 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RETURN_REQUESTED,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RETURN_REQUESTED,
 							},
 						},
 					},
@@ -640,10 +640,10 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RETURN_REQUESTED,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RETURN_REQUESTED,
 							},
 						},
 					},
@@ -663,11 +663,11 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RETURN_CONFIRMED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RETURN_CONFIRMED,
 							},
 						},
 					},
@@ -679,9 +679,9 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#STATUS_EQ_" + STATUS_RETURN_CONFIRMED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_STATUS + STATUS_RETURN_CONFIRMED,
 							},
 						},
 					},
@@ -693,11 +693,11 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RETURN_CONFIRMED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RETURN_CONFIRMED,
 							},
 						},
 					},
@@ -709,10 +709,10 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RETURN_CONFIRMED,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RETURN_CONFIRMED,
 							},
 						},
 					},
@@ -724,10 +724,10 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RETURN_CONFIRMED,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RETURN_CONFIRMED,
 							},
 						},
 					},
@@ -747,11 +747,11 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RETURNED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RETURNED,
 							},
 						},
 					},
@@ -762,9 +762,9 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#STATUS_EQ_" + STATUS_RETURNED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_STATUS + STATUS_RETURNED,
 							},
 						},
 					},
@@ -776,11 +776,11 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
-								"#BORROWERUSER_EQ_" + td.BorrowUser,
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RETURNED,
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RETURNED,
 							},
 						},
 					},
@@ -792,10 +792,10 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RETURNED,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RETURNED,
 							},
 						},
 					},
@@ -807,10 +807,10 @@ func TestHandleWorkflow(t *testing.T) {
 							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
 							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
-								"#LIBWORKERUSER_EQ_" + worker,
-								"#KEEPERUSER_EQ_" + "kpuser1",
-								"#KEEPERUSER_EQ_" + "kpuser2",
-								"#STATUS_EQ_" + STATUS_RETURNED,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_RETURNED,
 							},
 						},
 					},
@@ -1500,6 +1500,66 @@ func TestBorrowRestrict(t *testing.T) {
 	})
 
 }
+
+// func TestRenewTimes(t *testing.T) {
+// 
+// 	t.Run("renew until max times", func(t *testing.T) {
+// 
+// 		env := newWorkflowEnv()
+// 		env.plugin.maxRenewTimes = 1
+// 
+// 		wfrJson, _ := json.Marshal(WorkflowRequest{
+// 			ActorUser:     env.worker,
+// 			MasterPostKey: env.createdPid[env.td.BorChannelId],
+// 			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
+// 		})
+// 
+// 		w := httptest.NewRecorder()
+// 		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+// 		env.plugin.ServeHTTP(nil, w, r)
+// 
+// 		for _, status := range []string{
+// 			STATUS_DELIVIED,
+// 			STATUS_RENEW_REQUESTED,
+// 			STATUS_RENEW_CONFIRMED,
+// 		} {
+// 			wfrJson, _ := json.Marshal(WorkflowRequest{
+// 				ActorUser:     env.worker,
+// 				MasterPostKey: env.createdPid[env.td.BorChannelId],
+// 				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
+// 			})
+// 
+// 			w := httptest.NewRecorder()
+// 			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+// 			env.plugin.ServeHTTP(nil, w, r)
+// 		}
+// 
+// 		var bor Borrow
+// 		postBor := env.realbrUpdPosts[env.td.BorChannelId]
+// 		json.Unmarshal([]byte(postBor.Message), &bor)
+// 		assert.Equalf(t, 1, bor.DataOrImage.RenewedTimes, "renewed times should be 1")
+// 
+// 
+// 		wfrJson, _ = json.Marshal(WorkflowRequest{
+// 			ActorUser:     env.worker,
+// 			MasterPostKey: env.createdPid[env.td.BorChannelId],
+// 			NextStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, env.td.EmptyWorkflow),
+// 		})
+// 
+// 		w = httptest.NewRecorder()
+// 		r = httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+// 
+//                 env.realbrUpdPosts = map[string]*model.Post{}
+// 		env.plugin.ServeHTTP(nil, w, r)
+//                 assert.Equalf(t, 0, len(env.realbrUpdPosts), "should be no updated")
+// 
+// 		res := new(Result)
+// 		json.NewDecoder(w.Result().Body).Decode(&res)
+//                 assert.Equalf(t, ErrRenewLimited.Error(), res.Error, "renew error")
+// 
+// 	})
+// 
+// }
 
 func TestBorrowDelete(t *testing.T) {
 	logSwitch = true

@@ -27,6 +27,8 @@ type configuration struct {
 	BorrowWorkflowChannelName string
 	BorrowLimit               int
 	InitialAdmin              string
+        MaxRenewTimes int
+        ExpiredDays int
 }
 
 // Clone shallow copies the configuration. Your implementation may require a deep copy if
@@ -152,7 +154,7 @@ func (p *Plugin) OnConfigurationChange() error {
 			return errors.Wrap(appErr, "failed to add member to books team")
 		}
 
-                err := p.ensureMemberInChannel(bkchannel, admin)
+		err := p.ensureMemberInChannel(bkchannel, admin)
 		if err != nil {
 			return errors.Wrap(err, "failed to assign inital user to book channel")
 		}
@@ -172,6 +174,9 @@ func (p *Plugin) OnConfigurationChange() error {
 			return errors.Wrap(err, "failed to assign inital user to borrow channel")
 		}
 	}
+
+        p.maxRenewTimes = configuration.MaxRenewTimes
+        p.expiredDays = configuration.ExpiredDays
 	return nil
 }
 
@@ -252,8 +257,8 @@ func (p *Plugin) ensureMemberInChannel(channel *model.Channel, admin *model.User
 
 	_, appErr := p.API.GetChannelMember(channel.Id, admin.Id)
 
-	if appErr != nil && appErr.Id != "app.team.get_member.missing.app_error" {
-		return errors.Wrapf(appErr, "failed to get channel member")
+	if appErr != nil && appErr.Id != "app.channel.get_member.missing.app_error" {
+		return errors.Wrapf(appErr, "failed to get channel member. err.id:%v", appErr.Id)
 	}
 
 	if appErr == nil {

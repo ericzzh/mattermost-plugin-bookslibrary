@@ -74,11 +74,11 @@ func TestHandleBorrow(t *testing.T) {
 		assert.Equal(t, wf, br.Worflow, "Workflow")
 
 		assert.Equal(t, []string{
-			"#BORROWERUSER_EQ_" + borrowUser,
-			"#LIBWORKERUSER_EQ_" + br.LibworkerUser,
-			"#KEEPERUSER_EQ_" + aBook.KeeperUsers[0],
-			"#KEEPERUSER_EQ_" + aBook.KeeperUsers[1],
-			"#STATUS_EQ_" + STATUS_REQUESTED,
+			TAG_PREFIX_BORROWER + borrowUser,
+			TAG_PREFIX_LIBWORKER + br.LibworkerUser,
+			TAG_PREFIX_KEEPER + aBook.KeeperUsers[0],
+			TAG_PREFIX_KEEPER + aBook.KeeperUsers[1],
+			TAG_PREFIX_STATUS + STATUS_REQUESTED,
 		}, br.Tags, "Tags")
 
 	})
@@ -97,7 +97,7 @@ func TestHandleBorrow(t *testing.T) {
 		createdPid := returnedInfo.CreatedPid
 
 		//------- Verfication -------
-		realbrMsg := realbrPosts[plugin.borrowChannel.Id].Message
+		realbrMsg := realbrUpdPosts[plugin.borrowChannel.Id].Message
 		json.Unmarshal([]byte(realbrMsg), &realbr)
 
 		realwk := realbr.DataOrImage.LibworkerUser
@@ -134,11 +134,11 @@ func TestHandleBorrow(t *testing.T) {
 				keeperNames:  []string{"kpname1", "kpname2"},
 				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
-					"#BORROWERUSER_EQ_" + borrowUser,
-					"#LIBWORKERUSER_EQ_" + realwk,
-					"#KEEPERUSER_EQ_" + "kpuser1",
-					"#KEEPERUSER_EQ_" + "kpuser2",
-					"#STATUS_EQ_REQUESTED",
+					TAG_PREFIX_BORROWER + borrowUser,
+					TAG_PREFIX_LIBWORKER + realwk,
+					TAG_PREFIX_KEEPER + "kpuser1",
+					TAG_PREFIX_KEEPER + "kpuser2",
+					TAG_PREFIX_STATUS + STATUS_REQUESTED,
 				},
 			},
 			{
@@ -152,9 +152,9 @@ func TestHandleBorrow(t *testing.T) {
 				keeperNames:  []string{},
 				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
-					"#BORROWERUSER_EQ_" + borrowUser,
-					"#LIBWORKERUSER_EQ_" + realwk,
-					"#STATUS_EQ_REQUESTED",
+					TAG_PREFIX_BORROWER + borrowUser,
+					TAG_PREFIX_LIBWORKER + realwk,
+					TAG_PREFIX_STATUS + STATUS_REQUESTED,
 				},
 			},
 			{
@@ -168,11 +168,11 @@ func TestHandleBorrow(t *testing.T) {
 				keeperNames:  []string{"kpname1", "kpname2"},
 				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
-					"#BORROWERUSER_EQ_" + borrowUser,
-					"#LIBWORKERUSER_EQ_" + realwk,
-					"#KEEPERUSER_EQ_" + "kpuser1",
-					"#KEEPERUSER_EQ_" + "kpuser2",
-					"#STATUS_EQ_REQUESTED",
+					TAG_PREFIX_BORROWER + borrowUser,
+					TAG_PREFIX_LIBWORKER + realwk,
+					TAG_PREFIX_KEEPER + "kpuser1",
+					TAG_PREFIX_KEEPER + "kpuser2",
+					TAG_PREFIX_STATUS + STATUS_REQUESTED,
 				},
 			},
 			{
@@ -186,10 +186,10 @@ func TestHandleBorrow(t *testing.T) {
 				keeperNames:  []string{"kpname1", "kpname2"},
 				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
-					"#LIBWORKERUSER_EQ_" + realwk,
-					"#KEEPERUSER_EQ_" + "kpuser1",
-					"#KEEPERUSER_EQ_" + "kpuser2",
-					"#STATUS_EQ_REQUESTED",
+					TAG_PREFIX_LIBWORKER + realwk,
+					TAG_PREFIX_KEEPER + "kpuser1",
+					TAG_PREFIX_KEEPER + "kpuser2",
+					TAG_PREFIX_STATUS + STATUS_REQUESTED,
 				},
 			},
 			{
@@ -203,15 +203,15 @@ func TestHandleBorrow(t *testing.T) {
 				keeperNames:  []string{"kpname1", "kpname2"},
 				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
-					"#LIBWORKERUSER_EQ_" + realwk,
-					"#KEEPERUSER_EQ_" + "kpuser1",
-					"#KEEPERUSER_EQ_" + "kpuser2",
-					"#STATUS_EQ_REQUESTED",
+					TAG_PREFIX_LIBWORKER + realwk,
+					TAG_PREFIX_KEEPER + "kpuser1",
+					TAG_PREFIX_KEEPER + "kpuser2",
+					TAG_PREFIX_STATUS + STATUS_REQUESTED,
 				},
 			},
 		} {
 			var thisRealBr Borrow
-			_ = json.Unmarshal([]byte(realbrPosts[role.channelId].Message), &thisRealBr)
+			_ = json.Unmarshal([]byte(realbrUpdPosts[role.channelId].Message), &thisRealBr)
 
 			role.workflow[0].ActionDate = thisRealBr.DataOrImage.Worflow[0].ActionDate
 			br := &BorrowRequest{
@@ -244,7 +244,7 @@ func TestHandleBorrow(t *testing.T) {
 			expPost := &model.Post{
 				UserId:    plugin.botID,
 				ChannelId: role.channelId,
-				Message:   string(borrowExpJson),
+				Message:   "",
 				Type:      "custom_borrow_type",
 			}
 
@@ -265,7 +265,7 @@ func TestHandleBorrow(t *testing.T) {
 				borrowExp.RelationKeys.Master = createdPid[plugin.borrowChannel.Id]
 			}
 
-			borrowExpJson, _ = json.Marshal(borrowExp)
+			borrowExpJson, _ = json.MarshalIndent(borrowExp,"","  ")
 			expPost = &model.Post{
 				Id:        createdPid[role.channelId],
 				UserId:    plugin.botID,
