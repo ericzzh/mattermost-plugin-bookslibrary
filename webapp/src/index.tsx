@@ -9,6 +9,7 @@ import { PluginRegistry } from "./types/mattermost-webapp";
 
 import BookType from "./components/BookType"
 import BorrowType from "./components/BorrowType"
+import reducer from "./ConfigSlice"
 
 export default class Plugin {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-function
@@ -19,6 +20,7 @@ export default class Plugin {
         // @see https://developers.mattermost.com/extend/plugins/webapp/reference/
         registry.registerPostTypeComponent("custom_book_type", BookType);
         registry.registerPostTypeComponent("custom_borrow_type", BorrowType);
+        registry.registerReducer(reducer)
     }
 }
 

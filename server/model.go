@@ -119,6 +119,7 @@ type WorkflowRequest struct {
 	ActorUser     string `json:"act_user"`
 	NextStepIndex int    `json:"next_step_index"`
 	Delete        bool   `json:"delete"`
+	Backward      bool   `json:"backward"`
 }
 
 //The key role is library worker(libworker). it is the cross-point in the workflow
@@ -130,13 +131,15 @@ type WorkflowRequest struct {
 //in a borrowing workflow. We use a simple random number(uniform distribution) solution to solve this case.
 //To be more flexible a book are degsined to be able to assgin multi-persons too.
 type Step struct {
-	WorkflowType  string   `json:"workflow_type"`
-	Status        string   `json:"status"`
-	ActorRole     string   `json:"actor_role"`
-	Completed     bool     `json:"completed"`
-	ActionDate    int64    `json:"action_date"`
-	NextStepIndex []int    `json:"next_step_index"`
-	RelatedRoles  []string `json:"related_roles"`
+	WorkflowType string `json:"workflow_type"`
+	Status       string `json:"status"`
+	//ActorRole is the role who will take action to reach next status
+	ActorRole           string   `json:"actor_role"`
+	Completed           bool     `json:"completed"`
+	ActionDate          int64    `json:"action_date"`
+	NextStepIndex       []int    `json:"next_step_index"`
+	RelatedRoles        []string `json:"related_roles"`
+	LastActualStepIndex int      `json:"last_step_index"`
 }
 
 type BorrowRequest struct {
@@ -152,7 +155,6 @@ type BorrowRequest struct {
 	KeeperNames   []string `json:"keeper_names,omitempty"`
 	Worflow       []Step   `json:"workflow"`
 	StepIndex     int      `json:"step_index"`
-	LastStepIndex int      `json:"last_step_index"`
 	RenewedTimes  int      `json:"renewed_times"`
 	Tags          []string `json:"tags"`
 }
@@ -171,9 +173,9 @@ type RelationKeys struct {
 	Keepers   []string `json:"keepers,omitempty"`
 }
 
-type BookConfig struct {
+type Config struct {
 	MaxRenewTimes int `json:"max_renew_times"`
-	ExpiredDays   int `json:"expired_days"`
+	ExpiredDays   int `json:"expire_days"`
 }
 
 const (

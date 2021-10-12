@@ -213,10 +213,11 @@ func TestHandleWorkflow(t *testing.T) {
 	postById := env.postById
 
 	type testResult struct {
-		role    string
-		chid    string
-		notifiy bool
-		brq     BorrowRequest
+		role                string
+		chid                string
+		notifiy             bool
+		brq                 BorrowRequest
+		LastActualStepIndex int
 	}
 
 	type testData struct {
@@ -241,12 +242,12 @@ func TestHandleWorkflow(t *testing.T) {
 				},
 				[]testResult{
 					{
-						role:    MASTER,
-						chid:    td.BorChannelId,
-						notifiy: true,
+						role:                MASTER,
+						chid:                td.BorChannelId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -257,12 +258,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    BORROWER,
-						chid:    td.BorId_botId,
-						notifiy: true,
+						role:                BORROWER,
+						chid:                td.BorId_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -271,12 +272,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    LIBWORKER,
-						chid:    worker_botId,
-						notifiy: true,
+						role:                LIBWORKER,
+						chid:                worker_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -287,12 +288,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    KEEPER,
-						chid:    td.Keeper1Id_botId,
-						notifiy: true,
+						role:                KEEPER,
+						chid:                td.Keeper1Id_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
@@ -302,12 +303,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    KEEPER,
-						chid:    td.Keeper2Id_botId,
-						notifiy: true,
+						role:                KEEPER,
+						chid:                td.Keeper2Id_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
@@ -326,12 +327,12 @@ func TestHandleWorkflow(t *testing.T) {
 				},
 				[]testResult{
 					{
-						role:    MASTER,
-						chid:    td.BorChannelId,
-						notifiy: true,
+						role:                MASTER,
+						chid:                td.BorChannelId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -342,12 +343,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    BORROWER,
-						chid:    td.BorId_botId,
-						notifiy: true,
+						role:                BORROWER,
+						chid:                td.BorId_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -356,12 +357,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    LIBWORKER,
-						chid:    worker_botId,
-						notifiy: true,
+						role:                LIBWORKER,
+						chid:                worker_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -372,11 +373,11 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role: KEEPER,
-						chid: td.Keeper1Id_botId,
+						role:                KEEPER,
+						chid:                td.Keeper1Id_botId,
+						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
@@ -386,11 +387,11 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role: KEEPER,
-						chid: td.Keeper2Id_botId,
+						role:                KEEPER,
+						chid:                td.Keeper2Id_botId,
+						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_DELIVIED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
@@ -408,12 +409,12 @@ func TestHandleWorkflow(t *testing.T) {
 				},
 				[]testResult{
 					{
-						role:    MASTER,
-						chid:    td.BorChannelId,
-						notifiy: true,
+						role:                MASTER,
+						chid:                td.BorChannelId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -424,12 +425,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    BORROWER,
-						chid:    td.BorId_botId,
-						notifiy: true,
+						role:                BORROWER,
+						chid:                td.BorId_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -438,12 +439,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    LIBWORKER,
-						chid:    worker_botId,
-						notifiy: true,
+						role:                LIBWORKER,
+						chid:                worker_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -454,11 +455,11 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role: KEEPER,
-						chid: td.Keeper1Id_botId,
+						role:                KEEPER,
+						chid:                td.Keeper1Id_botId,
+						LastActualStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
@@ -468,11 +469,11 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role: KEEPER,
-						chid: td.Keeper2Id_botId,
+						role:                KEEPER,
+						chid:                td.Keeper2Id_botId,
+						LastActualStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
@@ -490,12 +491,12 @@ func TestHandleWorkflow(t *testing.T) {
 				},
 				[]testResult{
 					{
-						role:    MASTER,
-						chid:    td.BorChannelId,
-						notifiy: true,
+						role:                MASTER,
+						chid:                td.BorChannelId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -506,12 +507,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    BORROWER,
-						chid:    td.BorId_botId,
-						notifiy: true,
+						role:                BORROWER,
+						chid:                td.BorId_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -520,12 +521,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    LIBWORKER,
-						chid:    worker_botId,
-						notifiy: true,
+						role:                LIBWORKER,
+						chid:                worker_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -536,11 +537,11 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role: KEEPER,
-						chid: td.Keeper1Id_botId,
+						role:                KEEPER,
+						chid:                td.Keeper1Id_botId,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
@@ -550,11 +551,11 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role: KEEPER,
-						chid: td.Keeper2Id_botId,
+						role:                KEEPER,
+						chid:                td.Keeper2Id_botId,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
@@ -572,12 +573,12 @@ func TestHandleWorkflow(t *testing.T) {
 				},
 				[]testResult{
 					{
-						role:    MASTER,
-						chid:    td.BorChannelId,
-						notifiy: true,
+						role:                MASTER,
+						chid:                td.BorChannelId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -588,12 +589,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    BORROWER,
-						chid:    td.BorId_botId,
-						notifiy: true,
+						role:                BORROWER,
+						chid:                td.BorId_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -602,12 +603,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    LIBWORKER,
-						chid:    worker_botId,
-						notifiy: true,
+						role:                LIBWORKER,
+						chid:                worker_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -618,12 +619,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    KEEPER,
-						chid:    td.Keeper1Id_botId,
-						notifiy: true,
+						role:                KEEPER,
+						chid:                td.Keeper1Id_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
@@ -633,12 +634,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    KEEPER,
-						chid:    td.Keeper2Id_botId,
-						notifiy: true,
+						role:                KEEPER,
+						chid:                td.Keeper2Id_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
@@ -656,12 +657,12 @@ func TestHandleWorkflow(t *testing.T) {
 				},
 				[]testResult{
 					{
-						role:    MASTER,
-						chid:    td.BorChannelId,
-						notifiy: true,
+						role:                MASTER,
+						chid:                td.BorChannelId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -672,12 +673,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    BORROWER,
-						chid:    td.BorId_botId,
-						notifiy: true,
+						role:                BORROWER,
+						chid:                td.BorId_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -686,12 +687,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    LIBWORKER,
-						chid:    worker_botId,
-						notifiy: true,
+						role:                LIBWORKER,
+						chid:                worker_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -702,12 +703,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    KEEPER,
-						chid:    td.Keeper1Id_botId,
-						notifiy: true,
+						role:                KEEPER,
+						chid:                td.Keeper1Id_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
@@ -717,12 +718,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    KEEPER,
-						chid:    td.Keeper2Id_botId,
-						notifiy: true,
+						role:                KEEPER,
+						chid:                td.Keeper2Id_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
@@ -740,12 +741,12 @@ func TestHandleWorkflow(t *testing.T) {
 				},
 				[]testResult{
 					{
-						role:    MASTER,
-						chid:    td.BorChannelId,
-						notifiy: true,
+						role:                MASTER,
+						chid:                td.BorChannelId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURNED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -756,11 +757,11 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role: BORROWER,
-						chid: td.BorId_botId,
+						role:                BORROWER,
+						chid:                td.BorId_botId,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURNED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -769,12 +770,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    LIBWORKER,
-						chid:    worker_botId,
-						notifiy: true,
+						role:                LIBWORKER,
+						chid:                worker_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURNED, wf),
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
@@ -785,12 +786,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    KEEPER,
-						chid:    td.Keeper1Id_botId,
-						notifiy: true,
+						role:                KEEPER,
+						chid:                td.Keeper1Id_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURNED, wf),
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
@@ -800,12 +801,12 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 					{
-						role:    KEEPER,
-						chid:    td.Keeper2Id_botId,
-						notifiy: true,
+						role:                KEEPER,
+						chid:                td.Keeper2Id_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:     _getIndexByStatus(STATUS_RETURNED, wf),
-							LastStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
+							StepIndex: _getIndexByStatus(STATUS_RETURNED, wf),
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
@@ -858,6 +859,8 @@ func TestHandleWorkflow(t *testing.T) {
 			wf[step.wfr.NextStepIndex].Completed = true
 
 			for _, test := range step.result {
+				wf[step.wfr.NextStepIndex].LastActualStepIndex = test.LastActualStepIndex
+
 				oldPost := oldPosts[test.chid]
 				var oldBorrow Borrow
 				json.Unmarshal([]byte(oldPost.Message), &oldBorrow)
@@ -872,8 +875,6 @@ func TestHandleWorkflow(t *testing.T) {
 				assert.Equalf(t, test.brq.StepIndex, newBorrow.DataOrImage.StepIndex,
 					"in step: %v, role: %v", expStep, test.role)
 
-				assert.Equalf(t, test.brq.LastStepIndex, newBorrow.DataOrImage.LastStepIndex,
-					"in step: %v, role: %v", expStep, test.role)
 
 				assert.GreaterOrEqualf(t, actStep.ActionDate, baseLineTime,
 					"in step: %v, role: %v", expStep, test.role)
@@ -888,10 +889,12 @@ func TestHandleWorkflow(t *testing.T) {
 				oldBorrow.DataOrImage.Worflow = nil
 				newBorrow.DataOrImage.StepIndex = -1
 				oldBorrow.DataOrImage.StepIndex = -1
-				newBorrow.DataOrImage.LastStepIndex = -1
-				oldBorrow.DataOrImage.LastStepIndex = -1
 				newBorrow.DataOrImage.Tags = nil
 				oldBorrow.DataOrImage.Tags = nil
+
+				//we don't check this filed, leave this to another testing
+				oldBorrow.DataOrImage.RenewedTimes = 0
+				newBorrow.DataOrImage.RenewedTimes = 0
 
 				assert.Equalf(t, oldBorrow, newBorrow,
 					"in step: %v", expStep)
@@ -899,7 +902,7 @@ func TestHandleWorkflow(t *testing.T) {
 				if test.notifiy {
 					assert.Containsf(t, env.realNotifyThreads[test.chid].Message, expStep.Status,
 						"in step: %v, role: %v", expStep, test.role)
-					assert.Containsf(t, env.realNotifyThreads[test.chid].Message, _getUserByRole(expStep.ActorRole, td, worker),
+					assert.Containsf(t, env.realNotifyThreads[test.chid].Message, step.wfr.ActorUser,
 						"in step: %v, role: %v", expStep, test.role)
 				} else {
 					_, ok := env.realNotifyThreads[test.chid]
@@ -1501,65 +1504,208 @@ func TestBorrowRestrict(t *testing.T) {
 
 }
 
-// func TestRenewTimes(t *testing.T) {
-// 
-// 	t.Run("renew until max times", func(t *testing.T) {
-// 
-// 		env := newWorkflowEnv()
-// 		env.plugin.maxRenewTimes = 1
-// 
-// 		wfrJson, _ := json.Marshal(WorkflowRequest{
-// 			ActorUser:     env.worker,
-// 			MasterPostKey: env.createdPid[env.td.BorChannelId],
-// 			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
-// 		})
-// 
-// 		w := httptest.NewRecorder()
-// 		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-// 		env.plugin.ServeHTTP(nil, w, r)
-// 
-// 		for _, status := range []string{
-// 			STATUS_DELIVIED,
-// 			STATUS_RENEW_REQUESTED,
-// 			STATUS_RENEW_CONFIRMED,
-// 		} {
-// 			wfrJson, _ := json.Marshal(WorkflowRequest{
-// 				ActorUser:     env.worker,
-// 				MasterPostKey: env.createdPid[env.td.BorChannelId],
-// 				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
-// 			})
-// 
-// 			w := httptest.NewRecorder()
-// 			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-// 			env.plugin.ServeHTTP(nil, w, r)
-// 		}
-// 
-// 		var bor Borrow
-// 		postBor := env.realbrUpdPosts[env.td.BorChannelId]
-// 		json.Unmarshal([]byte(postBor.Message), &bor)
-// 		assert.Equalf(t, 1, bor.DataOrImage.RenewedTimes, "renewed times should be 1")
-// 
-// 
-// 		wfrJson, _ = json.Marshal(WorkflowRequest{
-// 			ActorUser:     env.worker,
-// 			MasterPostKey: env.createdPid[env.td.BorChannelId],
-// 			NextStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, env.td.EmptyWorkflow),
-// 		})
-// 
-// 		w = httptest.NewRecorder()
-// 		r = httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-// 
-//                 env.realbrUpdPosts = map[string]*model.Post{}
-// 		env.plugin.ServeHTTP(nil, w, r)
-//                 assert.Equalf(t, 0, len(env.realbrUpdPosts), "should be no updated")
-// 
-// 		res := new(Result)
-// 		json.NewDecoder(w.Result().Body).Decode(&res)
-//                 assert.Equalf(t, ErrRenewLimited.Error(), res.Error, "renew error")
-// 
-// 	})
-// 
-// }
+func TestRenewTimes(t *testing.T) {
+
+	t.Run("renew until max times", func(t *testing.T) {
+
+		env := newWorkflowEnv()
+		env.plugin.maxRenewTimes = 1
+
+		wfrJson, _ := json.Marshal(WorkflowRequest{
+			ActorUser:     env.worker,
+			MasterPostKey: env.createdPid[env.td.BorChannelId],
+			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
+		})
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+		env.plugin.ServeHTTP(nil, w, r)
+
+		for _, status := range []string{
+			STATUS_DELIVIED,
+			STATUS_RENEW_REQUESTED,
+			STATUS_RENEW_CONFIRMED,
+		} {
+			wfrJson, _ := json.Marshal(WorkflowRequest{
+				ActorUser:     env.worker,
+				MasterPostKey: env.createdPid[env.td.BorChannelId],
+				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
+			})
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			env.plugin.ServeHTTP(nil, w, r)
+		}
+
+		var bor Borrow
+		postBor := env.realbrUpdPosts[env.td.BorChannelId]
+		json.Unmarshal([]byte(postBor.Message), &bor)
+		assert.Equalf(t, 1, bor.DataOrImage.RenewedTimes, "renewed times should be 1")
+
+		wfrJson, _ = json.Marshal(WorkflowRequest{
+			ActorUser:     env.worker,
+			MasterPostKey: env.createdPid[env.td.BorChannelId],
+			NextStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, env.td.EmptyWorkflow),
+		})
+
+		w = httptest.NewRecorder()
+		r = httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+
+		var oldPosts map[string]*model.Post
+		DeepCopy(&oldPosts, &env.realbrUpdPosts)
+
+		env.plugin.ServeHTTP(nil, w, r)
+		assert.Equalf(t, oldPosts, env.realbrUpdPosts, "should be no updated")
+
+		res := new(Result)
+		json.NewDecoder(w.Result().Body).Decode(&res)
+		assert.Equalf(t, ErrRenewLimited.Error(), res.Error, "renew error")
+
+	})
+
+	t.Run("reset confirmed step at second renew time", func(t *testing.T) {
+
+		env := newWorkflowEnv()
+		env.plugin.maxRenewTimes = 2
+
+		for _, status := range []string{
+			STATUS_CONFIRMED,
+			STATUS_DELIVIED,
+			STATUS_RENEW_REQUESTED,
+			STATUS_RENEW_CONFIRMED,
+			STATUS_RENEW_REQUESTED,
+		} {
+			wfrJson, _ := json.Marshal(WorkflowRequest{
+				ActorUser:     env.worker,
+				MasterPostKey: env.createdPid[env.td.BorChannelId],
+				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
+			})
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			env.plugin.ServeHTTP(nil, w, r)
+			res := new(Result)
+			json.NewDecoder(w.Result().Body).Decode(&res)
+			assert.Equalf(t, "", res.Error, "should be no error")
+		}
+
+		var bor Borrow
+		postBor := env.realbrUpdPosts[env.td.BorChannelId]
+		json.Unmarshal([]byte(postBor.Message), &bor)
+		confirmedStep := bor.DataOrImage.Worflow[_getIndexByStatus(STATUS_RENEW_CONFIRMED, env.td.EmptyWorkflow)]
+		assert.Equalf(t, false, confirmedStep.Completed, "completed should be cleard")
+		assert.Equalf(t, int64(0), confirmedStep.ActionDate, "action date should be cleared")
+
+	})
+
+}
+
+func TestWorkflowJump(t *testing.T) {
+
+	t.Run("forward cyclic jump", func(t *testing.T) {
+
+		env := newWorkflowEnv()
+
+		var bor Borrow
+		postBor := env.realbrUpdPosts[env.td.BorChannelId]
+		json.Unmarshal([]byte(postBor.Message), &bor)
+		workflow := bor.DataOrImage.Worflow
+		reqStepOld := workflow[_getIndexByStatus(STATUS_REQUESTED, workflow)]
+
+		for _, status := range []string{
+			STATUS_CONFIRMED,
+			STATUS_DELIVIED,
+			STATUS_RENEW_REQUESTED,
+			STATUS_RENEW_CONFIRMED,
+			STATUS_RETURN_REQUESTED,
+			STATUS_RETURN_CONFIRMED,
+			STATUS_RETURNED,
+			STATUS_REQUESTED,
+		} {
+			wfrJson, _ := json.Marshal(WorkflowRequest{
+				ActorUser:     env.worker,
+				MasterPostKey: env.createdPid[env.td.BorChannelId],
+				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
+			})
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			env.plugin.ServeHTTP(nil, w, r)
+			res := new(Result)
+			json.NewDecoder(w.Result().Body).Decode(&res)
+			assert.Equalf(t, "", res.Error, "should be no error")
+		}
+
+		postBor = env.realbrUpdPosts[env.td.BorChannelId]
+		json.Unmarshal([]byte(postBor.Message), &bor)
+		workflow = bor.DataOrImage.Worflow
+		reqStepNew := workflow[_getIndexByStatus(STATUS_REQUESTED, workflow)]
+
+		assert.NotEqualf(t, reqStepOld, reqStepNew, "the new repeated step should not be equal")
+
+		checked := map[string]struct{}{}
+
+		var checkNextBlank func(s Step)
+		checkNextBlank = func(step Step) {
+			if step.NextStepIndex == nil {
+				return
+			}
+
+			checked[step.Status] = struct{}{}
+
+			for _, i := range step.NextStepIndex {
+				nextStep := workflow[i]
+				if _, ok := checked[nextStep.Status]; ok {
+					return
+				}
+				assert.Emptyf(t, nextStep.ActionDate, "Status:%v, action date should be empty", nextStep.Status)
+				assert.Equalf(t, false, nextStep.Completed, "Status:%v, complete status should be false", nextStep.Status)
+				checkNextBlank(nextStep)
+			}
+		}
+
+		checkNextBlank(workflow[0])
+	})
+
+	t.Run("backward cyclic jump(reject)", func(t *testing.T) {
+
+		env := newWorkflowEnv()
+
+		var bor Borrow
+		postBor := env.realbrUpdPosts[env.td.BorChannelId]
+		json.Unmarshal([]byte(postBor.Message), &bor)
+		workflow := bor.DataOrImage.Worflow
+		reqStepOld := workflow[_getIndexByStatus(STATUS_REQUESTED, workflow)]
+
+		for _, status := range []string{
+			STATUS_CONFIRMED,
+			STATUS_DELIVIED,
+			STATUS_REQUESTED,
+		} {
+
+			wfrJson, _ := json.Marshal(WorkflowRequest{
+				ActorUser:     env.worker,
+				MasterPostKey: env.createdPid[env.td.BorChannelId],
+				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
+				Backward:      true,
+			})
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			env.plugin.ServeHTTP(nil, w, r)
+			res := new(Result)
+			json.NewDecoder(w.Result().Body).Decode(&res)
+			assert.Equalf(t, "", res.Error, "should be no error")
+		}
+
+		postBor = env.realbrUpdPosts[env.td.BorChannelId]
+		json.Unmarshal([]byte(postBor.Message), &bor)
+		workflow = bor.DataOrImage.Worflow
+		reqStepNew := workflow[_getIndexByStatus(STATUS_REQUESTED, workflow)]
+
+		assert.Equalf(t, reqStepOld, reqStepNew, "the new back returned step should be equal")
+	})
+}
 
 func TestBorrowDelete(t *testing.T) {
 	logSwitch = true

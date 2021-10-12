@@ -351,7 +351,6 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 	p._setTags(STATUS_REQUESTED, bq)
 
 	bq.StepIndex = 0
-	bq.LastStepIndex = -1
 
 	return bq, nil
 }
@@ -399,24 +398,26 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 		{
 			WorkflowType:  WORKFLOW_BORROW,
 			Status:        STATUS_REQUESTED,
-			ActorRole:     BORROWER,
+			ActorRole:     LIBWORKER,
 			Completed:     true,
 			ActionDate:    prt,
 			NextStepIndex: []int{1},
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER, KEEPER,
 			},
+                        LastActualStepIndex: -1,
 		},
 		{
 			WorkflowType:  WORKFLOW_BORROW,
 			Status:        STATUS_CONFIRMED,
-			ActorRole:     LIBWORKER,
+			ActorRole:     BORROWER,
 			Completed:     false,
 			ActionDate:    0,
 			NextStepIndex: []int{2},
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER, KEEPER,
 			},
+                        LastActualStepIndex: -1,
 		},
 		{
 			WorkflowType:  WORKFLOW_BORROW,
@@ -428,61 +429,67 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER,
 			},
+                        LastActualStepIndex: -1,
 		},
 		{
 			WorkflowType:  WORKFLOW_RENEW,
 			Status:        STATUS_RENEW_REQUESTED,
-			ActorRole:     BORROWER,
+			ActorRole:     LIBWORKER,
 			Completed:     false,
 			ActionDate:    0,
 			NextStepIndex: []int{4},
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER,
 			},
+                        LastActualStepIndex: -1,
 		},
 		{
 			WorkflowType:  WORKFLOW_RENEW,
 			Status:        STATUS_RENEW_CONFIRMED,
-			ActorRole:     LIBWORKER,
+			ActorRole:     BORROWER,
 			Completed:     false,
 			ActionDate:    0,
-			NextStepIndex: []int{5},
+			NextStepIndex: []int{5, 3},
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER,
 			},
+                        LastActualStepIndex: -1,
 		},
 		{
 			WorkflowType:  WORKFLOW_RETURN,
 			Status:        STATUS_RETURN_REQUESTED,
-			ActorRole:     BORROWER,
+			ActorRole:     LIBWORKER,
 			Completed:     false,
 			ActionDate:    0,
 			NextStepIndex: []int{6},
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER, KEEPER,
 			},
+                        LastActualStepIndex: -1,
 		},
 		{
 			WorkflowType:  WORKFLOW_RETURN,
 			Status:        STATUS_RETURN_CONFIRMED,
-			ActorRole:     LIBWORKER,
+			ActorRole:     KEEPER,
 			Completed:     false,
 			ActionDate:    0,
 			NextStepIndex: []int{7},
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER, KEEPER,
 			},
+                        LastActualStepIndex: -1,
 		},
 		{
 			WorkflowType:  WORKFLOW_RETURN,
 			Status:        STATUS_RETURNED,
-			ActorRole:     KEEPER,
+			ActorRole:     LIBWORKER,
 			Completed:     false,
 			ActionDate:    0,
 			NextStepIndex: nil,
 			RelatedRoles: []string{
 				MASTER, LIBWORKER, KEEPER,
 			},
+                        LastActualStepIndex: -1,
 		},
 	}
 

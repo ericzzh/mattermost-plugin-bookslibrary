@@ -47,6 +47,8 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 		p.handleWorkflowRequest(c, w, r)
 	case "/books":
 		p.handleBooksRequest(c, w, r)
+	case "/config":
+		p.handleConfigRequest(c, w, r)
 	default:
 		http.NotFound(w, r)
 	}

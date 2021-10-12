@@ -64,7 +64,6 @@ func TestHandleBorrow(t *testing.T) {
 		assert.Equal(t, aBook.KeeperNames, br.KeeperNames, "KeeperNames")
 
 		assert.Equal(t, 0, br.StepIndex, "StepIndex")
-		assert.Equal(t, -1, br.LastStepIndex, "LastStepIndex")
 
 		// testTime := time.Now().Add(-10 * time.Second).Unix()
 		assert.Equal(t, br.Worflow[0].ActionDate, otherData.processTime, "RequestDate")
@@ -227,7 +226,6 @@ func TestHandleBorrow(t *testing.T) {
 				KeeperNames:   role.keeperNames,
 				Worflow:       role.workflow,
 				StepIndex:     0,
-				LastStepIndex: -1,
 				Tags:          role.tags,
 			}
 

@@ -76,6 +76,7 @@
     "@material-ui/lab": "4.0.0-alpha.60",
     "@mui/icons-material": "5.0.0",
     "@mui/material": "5.0.0",
+    "@reduxjs/toolkit": "1.6.2",
     "bootstrap": "5.1.0",
     "clsx": "1.1.1",
     "core-js": "3.6.5",

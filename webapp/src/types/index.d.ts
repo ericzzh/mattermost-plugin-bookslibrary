@@ -1,14 +1,20 @@
-
-type STATUS_REQUESTED        = "R"
-type STATUS_CONFIRMED        = "C"
-type STATUS_DELIVIED         = "D"
-type STATUS_RENEW_REQUESTED  = "RR"
-type STATUS_RENEW_CONFIRMED  = "RC"
-type STATUS_RETURN_REQUESTED = "RTR"
-type STATUS_RETURN_CONFIRMED = "RTC"
-type STATUS_RETURNED         = "RT"
-type STATUS = STATUS_REQUESTED | STATUS_CONFIRMED | STATUS_DELIVIED | STATUS_RENEW_REQUESTED
-   | STATUS_RENEW_CONFIRMED | STATUS_RETURN_REQUESTED | STATUS_RETURN_CONFIRMED | STATUS_RETURNED
+type STATUS_REQUESTED = "R";
+type STATUS_CONFIRMED = "C";
+type STATUS_DELIVIED = "D";
+type STATUS_RENEW_REQUESTED = "RR";
+type STATUS_RENEW_CONFIRMED = "RC";
+type STATUS_RETURN_REQUESTED = "RTR";
+type STATUS_RETURN_CONFIRMED = "RTC";
+type STATUS_RETURNED = "RT";
+type STATUS =
+    | STATUS_REQUESTED
+    | STATUS_CONFIRMED
+    | STATUS_DELIVIED
+    | STATUS_RENEW_REQUESTED
+    | STATUS_RENEW_CONFIRMED
+    | STATUS_RETURN_REQUESTED
+    | STATUS_RETURN_CONFIRMED
+    | STATUS_RETURNED;
 
 interface Book {
     id_pub: string;
@@ -35,11 +41,6 @@ interface Book {
         private: string;
         inventory: string;
     };
-}
-
-interface BorrowRequestKey {
-    book_post_id: string;
-    borrower_user: string;
 }
 
 interface BooksRequest {
@@ -71,6 +72,12 @@ interface Step {
     action_date: number;
     next_step_index: number[];
     related_roles: string[];
+    last_step_index: number;
+}
+
+interface BorrowRequestKey {
+    book_post_id: string;
+    borrower_user: string;
 }
 
 interface BorrowRequest {
@@ -86,7 +93,6 @@ interface BorrowRequest {
     keeper_names: string[];
     workflow: Step[];
     step_index: number;
-    last_step_index: number;
     tags: string[];
 }
 
@@ -101,4 +107,12 @@ interface Borrow {
         libworker: string;
         keepers: string;
     };
+}
+
+interface WorkflowRequest {
+    master_key: string;
+    act_user: string;
+    next_step_index?: number;
+    delete?: boolean;
+    backward?:boolean;
 }

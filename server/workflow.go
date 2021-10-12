@@ -86,7 +86,8 @@ func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter,
 	if err := p._process(workflowReq, all, bookInfo); err != nil {
 		p.API.LogError("Process  error.", "error", err.Error())
 		resp, _ := json.Marshal(Result{
-			Error: fmt.Sprintf("process error."),
+			// Error: fmt.Sprintf("process error."),
+			Error: err.Error(),
 		})
 
 		w.Write(resp)
@@ -115,6 +116,47 @@ func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter,
 
 }
 
+func (p *Plugin) _initChecked(workflow []Step, fromStep Step, toStep Step, checked map[string]struct{}) {
+
+	checked[fromStep.Status] = struct{}{}
+
+	if fromStep.NextStepIndex == nil {
+		return
+	}
+
+	if fromStep.Status == toStep.Status {
+		return
+	}
+
+	for _, i := range fromStep.NextStepIndex {
+		nextStep := workflow[i]
+		if _, ok := checked[nextStep.Status]; ok {
+			return
+		}
+		p._initChecked(workflow, nextStep, toStep, checked)
+	}
+
+}
+
+func (p *Plugin) _clearNextSteps(step *Step, workflow []Step, checked map[string]struct{}) {
+
+	if step.NextStepIndex == nil {
+		return
+	}
+
+	checked[step.Status] = struct{}{}
+
+	for _, i := range step.NextStepIndex {
+		nextStep := &workflow[i]
+		if _, ok := checked[nextStep.Status]; ok {
+			return
+		}
+		nextStep.ActionDate = 0
+		nextStep.Completed = false
+		p._clearNextSteps(nextStep, workflow, checked)
+	}
+}
+
 func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost, bookInfo *bookInfo) error {
 
 	actionTime := GetNowTime()
@@ -123,87 +165,104 @@ func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost
 	inv := bookInfo.book.BookInventory
 	pub := bookInfo.book.BookPublic
 
-	for _, role := range []string{
-		MASTER, BORROWER, LIBWORKER, KEEPER,
-	} {
-		for _, br := range all[role] {
-			nextStep := &br.borrow.DataOrImage.Worflow[req.NextStepIndex]
+	for _, br := range all[MASTER] {
+		workflow := br.borrow.DataOrImage.Worflow
+		nextStep := &workflow[req.NextStepIndex]
 
-			// usersSet := ConvertStringArrayToSet(p._getUserByRole(nextStep.ActorRole, br.borrow.DataOrImage))
-			// if role == MASTER {
-			// 	if !ConstainsInStringSet(usersSet, []string{req.ActorUser}) {
-			// 		return errors.New(fmt.Sprintf("This user is not of current actor role"))
-			// 	}
-			// }
+		// usersSet := ConvertStringArrayToSet(p._getUserByRole(nextStep.ActorRole, br.borrow.DataOrImage))
+		// if role == MASTER {
+		// 	if !ConstainsInStringSet(usersSet, []string{req.ActorUser}) {
+		// 		return errors.New(fmt.Sprintf("This user is not of current actor role"))
+		// 	}
+		// }
 
-			switch nextStep.WorkflowType {
-			case WORKFLOW_BORROW:
-				switch nextStep.Status {
-				case STATUS_REQUESTED:
-				case STATUS_CONFIRMED:
+		switch nextStep.WorkflowType {
+		case WORKFLOW_BORROW:
+			switch nextStep.Status {
+			case STATUS_REQUESTED:
+			case STATUS_CONFIRMED:
 
-					//just set stock only once
-					//As master is the most completed role
-					if role == MASTER {
-						if inv.Stock <= 0 {
-							return errors.New(fmt.Sprintf("No stock."))
-						}
-
-						inv.Stock--
-
-						if inv.Stock == 0 && pub.IsAllowedToBorrow {
-							pub.IsAllowedToBorrow = false
-						}
-
-						inv.TransmitOut++
-					}
-
-				case STATUS_DELIVIED:
-					if role == MASTER {
-						inv.TransmitOut--
-						inv.Lending++
-					}
-				default:
-					return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
+				//just set stock only once
+				//As master is the most completed role
+				if inv.Stock <= 0 {
+					return errors.New(fmt.Sprintf("No stock."))
 				}
-			case WORKFLOW_RENEW:
-				switch nextStep.Status {
-				case STATUS_RENEW_REQUESTED:
-				case STATUS_RENEW_CONFIRMED:
-				default:
-					return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
-				}
-			case WORKFLOW_RETURN:
-				switch nextStep.Status {
-				case STATUS_RETURN_REQUESTED:
-				case STATUS_RETURN_CONFIRMED:
-					if role == MASTER {
-						inv.Lending--
-						inv.TransmitIn++
-					}
-				case STATUS_RETURNED:
-					if role == MASTER {
-						inv.TransmitIn--
-						inv.Stock++
 
-						if inv.Stock > 0 &&
-							!pub.IsAllowedToBorrow {
-							pub.IsAllowedToBorrow = true
-						}
-					}
-				default:
-					return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
+				inv.Stock--
+
+				if inv.Stock == 0 && pub.IsAllowedToBorrow {
+					pub.IsAllowedToBorrow = false
+				}
+
+				inv.TransmitOut++
+
+			case STATUS_DELIVIED:
+				inv.TransmitOut--
+				inv.Lending++
+			default:
+				return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
+			}
+		case WORKFLOW_RENEW:
+			switch nextStep.Status {
+			case STATUS_RENEW_REQUESTED:
+				if br.borrow.DataOrImage.RenewedTimes >= p.maxRenewTimes {
+					return ErrRenewLimited
+				}
+			case STATUS_RENEW_CONFIRMED:
+				br.borrow.DataOrImage.RenewedTimes++
+			default:
+				return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
+			}
+		case WORKFLOW_RETURN:
+			switch nextStep.Status {
+			case STATUS_RETURN_REQUESTED:
+			case STATUS_RETURN_CONFIRMED:
+				inv.Lending--
+				inv.TransmitIn++
+			case STATUS_RETURNED:
+				inv.TransmitIn--
+				inv.Stock++
+
+				if inv.Stock > 0 &&
+					!pub.IsAllowedToBorrow {
+					pub.IsAllowedToBorrow = true
 				}
 			default:
-				return errors.New(fmt.Sprintf("Unknown workflow: %v", nextStep.WorkflowType))
+				return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
 			}
+		default:
+			return errors.New(fmt.Sprintf("Unknown workflow: %v", nextStep.WorkflowType))
+		}
 
+		if !req.Backward {
 			nextStep.ActionDate = actionTime
 			nextStep.Completed = true
-			br.borrow.DataOrImage.LastStepIndex = br.borrow.DataOrImage.StepIndex
-			br.borrow.DataOrImage.StepIndex = req.NextStepIndex
-			p._setTags(nextStep.Status, br.borrow.DataOrImage)
+                        nextStep.LastActualStepIndex = br.borrow.DataOrImage.StepIndex
+		}
+		br.borrow.DataOrImage.StepIndex = req.NextStepIndex
+		p._setTags(nextStep.Status, br.borrow.DataOrImage)
 
+		checked := map[string]struct{}{}
+		p._initChecked(workflow, workflow[0], *nextStep, checked)
+		p._clearNextSteps(nextStep, workflow, checked)
+	}
+
+	//Set others
+	//We seperate these from master process, for the performance reason
+	master := all[MASTER][0]
+	masterWf := master.borrow.DataOrImage.Worflow
+	masterSt := masterWf[req.NextStepIndex]
+
+	for _, role := range []string{
+		BORROWER, LIBWORKER, KEEPER,
+	} {
+		for _, br := range all[role] {
+			//Caution: this workflow share the same space, if some modification is necessary,
+			//must deep copy it
+			br.borrow.DataOrImage.Worflow = masterWf
+			br.borrow.DataOrImage.StepIndex = req.NextStepIndex
+			p._setTags(masterSt.Status, br.borrow.DataOrImage)
+			br.borrow.DataOrImage.RenewedTimes = master.borrow.DataOrImage.RenewedTimes
 		}
 	}
 
@@ -311,8 +370,8 @@ func (p *Plugin) _loadAndLock(req *WorkflowRequest) (map[string][]*borrowWithPos
 
 	master, err := p._getBorrowById(req.MasterPostKey)
 	if err != nil {
-                // not found is a fatal error for master post
-                // so it should be end (different with other kind posts)
+		// not found is a fatal error for master post
+		// so it should be end (different with other kind posts)
 		defer lockmap.Delete(req.MasterPostKey)
 		return nil, errors.Wrapf(err, fmt.Sprintf("Get %v borrow error", MASTER))
 	}
