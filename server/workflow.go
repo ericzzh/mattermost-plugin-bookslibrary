@@ -79,6 +79,10 @@ func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter,
 			return
 		}
 
+		resp, _ := json.Marshal(Result{
+			Error: "",
+		})
+		w.Write(resp)
 		return
 
 	}
@@ -113,6 +117,12 @@ func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter,
 		w.Write(resp)
 		return
 	}
+
+	resp, _ := json.Marshal(Result{
+		Error: "",
+	})
+
+	w.Write(resp)
 
 }
 
@@ -157,17 +167,148 @@ func (p *Plugin) _clearNextSteps(step *Step, workflow []Step, checked map[string
 	}
 }
 
+func (p *Plugin) _processInventoryOfSingleStep(workflow []Step, currStep *Step, nextStep *Step, bookInfo *bookInfo, backward bool) error {
+
+	var (
+		increment int
+		refStep   *Step
+	)
+
+	if !backward {
+		increment = 1
+		refStep = nextStep
+	} else {
+		increment = -1
+		refStep = currStep
+	}
+
+	inv := bookInfo.book.BookInventory
+	pub := bookInfo.book.BookPublic
+	switch refStep.WorkflowType {
+	case WORKFLOW_BORROW:
+		switch refStep.Status {
+		case STATUS_REQUESTED:
+		case STATUS_CONFIRMED:
+
+			//just set stock only once
+			//As master is the most completed role
+			if !backward && inv.Stock <= 0 {
+				return errors.New(fmt.Sprintf("No stock."))
+			}
+
+			inv.Stock -= increment
+
+			if inv.Stock <= 0 && pub.IsAllowedToBorrow {
+				pub.IsAllowedToBorrow = false
+                                pub.ReasonOfDisallowed = p.i18n.GetText("no-stock")
+			}
+
+			if inv.Stock != 0 && !pub.IsAllowedToBorrow && !pub.ManuallyDisallowed {
+				pub.IsAllowedToBorrow = true
+                                pub.ReasonOfDisallowed = ""
+			}
+
+			inv.TransmitOut += increment
+
+		case STATUS_DELIVIED:
+			inv.TransmitOut -= increment
+			inv.Lending += increment
+		default:
+			return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", refStep.Status, refStep.WorkflowType))
+		}
+	case WORKFLOW_RENEW:
+		switch refStep.Status {
+		case STATUS_RENEW_REQUESTED:
+		case STATUS_RENEW_CONFIRMED:
+		default:
+			return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", refStep.Status, refStep.WorkflowType))
+		}
+	case WORKFLOW_RETURN:
+		switch refStep.Status {
+		case STATUS_RETURN_REQUESTED:
+		case STATUS_RETURN_CONFIRMED:
+			inv.Lending -= increment
+			inv.TransmitIn += increment
+		case STATUS_RETURNED:
+			inv.TransmitIn -= increment
+			inv.Stock += increment
+
+			if inv.Stock > 0 &&
+				!pub.IsAllowedToBorrow && !pub.ManuallyDisallowed {
+				pub.IsAllowedToBorrow = true
+                                pub.ReasonOfDisallowed = ""
+			}
+			if inv.Stock <= 0 &&
+				pub.IsAllowedToBorrow {
+				pub.IsAllowedToBorrow = false
+                                pub.ReasonOfDisallowed = p.i18n.GetText("no-stock")
+			}
+		default:
+			return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", refStep.Status, refStep.WorkflowType))
+		}
+	default:
+		return errors.New(fmt.Sprintf("Unknown workflow: %v", refStep.WorkflowType))
+	}
+
+	return nil
+}
+
+func (p *Plugin) _processRenewOfSingleStep(br *borrowWithPost, workflow []Step, currStep *Step, nextStep *Step, bookInfo *bookInfo, backward bool) error {
+	var (
+		increment int
+		refStep   *Step
+	)
+
+	if !backward {
+		increment = 1
+		refStep = nextStep
+	} else {
+		increment = -1
+		refStep = currStep
+	}
+
+	switch refStep.WorkflowType {
+	case WORKFLOW_BORROW:
+		switch refStep.Status {
+		case STATUS_REQUESTED:
+		case STATUS_CONFIRMED:
+		case STATUS_DELIVIED:
+		default:
+			return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", refStep.Status, refStep.WorkflowType))
+		}
+	case WORKFLOW_RENEW:
+		switch refStep.Status {
+		case STATUS_RENEW_REQUESTED:
+			if br.borrow.DataOrImage.RenewedTimes >= p.maxRenewTimes {
+				return ErrRenewLimited
+			}
+		case STATUS_RENEW_CONFIRMED:
+			br.borrow.DataOrImage.RenewedTimes += increment
+		default:
+			return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", refStep.Status, refStep.WorkflowType))
+		}
+	case WORKFLOW_RETURN:
+		switch refStep.Status {
+		case STATUS_RETURN_REQUESTED:
+		case STATUS_RETURN_CONFIRMED:
+		case STATUS_RETURNED:
+		default:
+			return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", refStep.Status, refStep.WorkflowType))
+		}
+	default:
+		return errors.New(fmt.Sprintf("Unknown workflow: %v", refStep.WorkflowType))
+	}
+	return nil
+}
 func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost, bookInfo *bookInfo) error {
 
 	actionTime := GetNowTime()
 
 	//in-place change
-	inv := bookInfo.book.BookInventory
-	pub := bookInfo.book.BookPublic
-
 	for _, br := range all[MASTER] {
 		workflow := br.borrow.DataOrImage.Worflow
 		nextStep := &workflow[req.NextStepIndex]
+		currStep := &workflow[br.borrow.DataOrImage.StepIndex]
 
 		// usersSet := ConvertStringArrayToSet(p._getUserByRole(nextStep.ActorRole, br.borrow.DataOrImage))
 		// if role == MASTER {
@@ -181,35 +322,14 @@ func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost
 			switch nextStep.Status {
 			case STATUS_REQUESTED:
 			case STATUS_CONFIRMED:
-
-				//just set stock only once
-				//As master is the most completed role
-				if inv.Stock <= 0 {
-					return errors.New(fmt.Sprintf("No stock."))
-				}
-
-				inv.Stock--
-
-				if inv.Stock == 0 && pub.IsAllowedToBorrow {
-					pub.IsAllowedToBorrow = false
-				}
-
-				inv.TransmitOut++
-
 			case STATUS_DELIVIED:
-				inv.TransmitOut--
-				inv.Lending++
 			default:
 				return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
 			}
 		case WORKFLOW_RENEW:
 			switch nextStep.Status {
 			case STATUS_RENEW_REQUESTED:
-				if br.borrow.DataOrImage.RenewedTimes >= p.maxRenewTimes {
-					return ErrRenewLimited
-				}
 			case STATUS_RENEW_CONFIRMED:
-				br.borrow.DataOrImage.RenewedTimes++
 			default:
 				return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
 			}
@@ -217,16 +337,7 @@ func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost
 			switch nextStep.Status {
 			case STATUS_RETURN_REQUESTED:
 			case STATUS_RETURN_CONFIRMED:
-				inv.Lending--
-				inv.TransmitIn++
 			case STATUS_RETURNED:
-				inv.TransmitIn--
-				inv.Stock++
-
-				if inv.Stock > 0 &&
-					!pub.IsAllowedToBorrow {
-					pub.IsAllowedToBorrow = true
-				}
 			default:
 				return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
 			}
@@ -234,10 +345,18 @@ func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost
 			return errors.New(fmt.Sprintf("Unknown workflow: %v", nextStep.WorkflowType))
 		}
 
+		if err := p._processInventoryOfSingleStep(workflow, currStep, nextStep, bookInfo, req.Backward); err != nil {
+			return err
+		}
+
+		if err := p._processRenewOfSingleStep(br, workflow, currStep, nextStep, bookInfo, req.Backward); err != nil {
+			return err
+		}
+
 		if !req.Backward {
 			nextStep.ActionDate = actionTime
 			nextStep.Completed = true
-                        nextStep.LastActualStepIndex = br.borrow.DataOrImage.StepIndex
+			nextStep.LastActualStepIndex = br.borrow.DataOrImage.StepIndex
 		}
 		br.borrow.DataOrImage.StepIndex = req.NextStepIndex
 		p._setTags(nextStep.Status, br.borrow.DataOrImage)
@@ -299,12 +418,21 @@ func (p *Plugin) _deleteBorrowRequest(req *WorkflowRequest, all map[string][]*bo
 						inv := bookInfo.book.BookInventory
 						inv.TransmitOut--
 						inv.Stock++
+
+						if inv.Stock > 0 && !bookInfo.book.IsAllowedToBorrow && !bookInfo.book.ManuallyDisallowed {
+							bookInfo.book.IsAllowedToBorrow = true
+                                                        bookInfo.book.ReasonOfDisallowed = ""
+						}
+
 						if err := p._updateBookParts(updateOptions{
+							pub:     bookInfo.book.BookPublic,
+							pubPost: bookInfo.pubPost,
 							inv:     inv,
 							invPost: bookInfo.invPost,
 						}); err != nil {
 							return errors.Wrapf(err, "adjust inventory error")
 						}
+
 					}
 				}
 				if appErr := p.API.DeletePost(brwp.post.Id); appErr != nil {
@@ -377,6 +505,8 @@ func (p *Plugin) _loadAndLock(req *WorkflowRequest) (map[string][]*borrowWithPos
 	}
 	allBorrows[MASTER] = append(allBorrows[MASTER], master)
 
+	lockedIds := map[string]bool{}
+
 	for _, role := range []struct {
 		name string
 		ids  []string
@@ -396,9 +526,16 @@ func (p *Plugin) _loadAndLock(req *WorkflowRequest) (map[string][]*borrowWithPos
 	} {
 		for _, id := range role.ids {
 
+			//for the case of same roles, the id is the same,
+			//so we have to check this
+			if _, ok := lockedIds[id]; ok {
+				continue
+			}
 			if _, ok := lockmap.LoadOrStore(id, struct{}{}); ok {
 				return nil, errors.New(fmt.Sprintf("Lock %v error", role.name))
 			}
+
+			lockedIds[id] = true
 
 			br, err := p._getBorrowById(id)
 			if err != nil {

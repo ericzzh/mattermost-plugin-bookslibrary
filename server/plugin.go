@@ -36,6 +36,8 @@ type Plugin struct {
 
 	maxRenewTimes int
 	expiredDays   int
+        
+        i18n *i18n
 }
 
 // ServeHTTP demonstrates a plugin that handles HTTP requests by greeting the world.

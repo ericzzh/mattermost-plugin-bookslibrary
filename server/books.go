@@ -188,21 +188,19 @@ func (p *Plugin) _uploadABook(book *Book) (*BooksMessage, error) {
 			//---------------------------------------
 			// Update a exsited post
 			//---------------------------------------
-			if bookupl.Post_id != "" {
-				err := p._updateABook(book)
-				if err != nil {
-					return &BooksMessage{
-						PostId:  bookupl.Post_id,
-						Status:  BOOK_UPLOAD_ERROR,
-						Message: err.Error(),
-					}, err
-				}
+			err := p._updateABook(book)
+			if err != nil {
 				return &BooksMessage{
 					PostId:  bookupl.Post_id,
-					Status:  BOOK_UPLOAD_SUCC,
-					Message: "Successfully updated.",
-				}, nil
+					Status:  BOOK_UPLOAD_ERROR,
+					Message: err.Error(),
+				}, err
 			}
+			return &BooksMessage{
+				PostId:  bookupl.Post_id,
+				Status:  BOOK_UPLOAD_SUCC,
+				Message: "Successfully updated.",
+			}, nil
 		}
 	}
 	//---------------------------------------
@@ -301,6 +299,19 @@ func (p *Plugin) _updateABook(book *Book) error {
 	if err != nil {
 		return errors.Wrapf(err, "get pub error.")
 	}
+	//IsAllowedToBorrow is not updated when updating
+	if !book.Upload.UpdIsAllowedToBorrow {
+		bookPub.IsAllowedToBorrow = bookPubOld.IsAllowedToBorrow
+                bookPub.ManuallyDisallowed = bookPubOld.ManuallyDisallowed
+	} else {
+		//manually update, should update this field
+		if bookPub.IsAllowedToBorrow {
+			bookPub.ManuallyDisallowed = false
+                        bookPub.ReasonOfDisallowed = ""
+		} else {
+			bookPub.ManuallyDisallowed = true
+		}
+	}
 	bookPub.Relations = bookPubOld.Relations
 	//------------------------------
 	//get private part
@@ -352,6 +363,10 @@ func (p *Plugin) _updateABook(book *Book) error {
 		bookInv.TransmitIn = bookInvOld.TransmitIn
 		bookInv.Lending = bookInvOld.Lending
 		bookInv.TransmitOut = bookInvOld.TransmitOut
+                
+                if bookInv.Stock > 0 && !bookPub.ManuallyDisallowed && !bookPub.IsAllowedToBorrow {
+                    bookPub.IsAllowedToBorrow = true
+                }
 
 		bookInv.Relations = bookInvOld.Relations
 	}

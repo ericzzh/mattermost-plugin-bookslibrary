@@ -263,7 +263,7 @@ func TestHandleBorrow(t *testing.T) {
 				borrowExp.RelationKeys.Master = createdPid[plugin.borrowChannel.Id]
 			}
 
-			borrowExpJson, _ = json.MarshalIndent(borrowExp,"","  ")
+			borrowExpJson, _ = json.MarshalIndent(borrowExp, "", "  ")
 			expPost = &model.Post{
 				Id:        createdPid[role.channelId],
 				UserId:    plugin.botID,
@@ -594,4 +594,25 @@ func TestHandleBorrow(t *testing.T) {
 
 	})
 
+}
+
+
+func TestHandleBorrowForChange(t *testing.T) {
+
+	t.Run("toggle to disallowed as no-stock", func(t *testing.T) {
+		td := NewTestData()
+		td.ABookInv.Stock = 0 
+
+		api := td.ApiMockCommon()
+		plugin := td.NewMockPlugin()
+		plugin.SetAPI(api)
+
+		GenerateBorrowRequest(td, plugin, api)
+
+                assert.Equalf(t, false, td.ABookPub.IsAllowedToBorrow, "should not allowed")
+                assert.Equalf(t, "无库存", td.ABookPub.ReasonOfDisallowed, "reason should be the text of no-stock")
+                
+
+
+	})
 }

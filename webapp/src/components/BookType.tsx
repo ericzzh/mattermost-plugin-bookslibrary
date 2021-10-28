@@ -33,7 +33,8 @@ import { useTheme } from "@material-ui/core/styles";
 import { GlobalState } from "mattermost-redux/types/store";
 import { Channel } from "mattermost-redux/types/channels";
 import InProgress from "./InProgress";
-import MsgBox, { MsgBoxProps } from "./MsgBox";
+import MsgBox, { MsgBoxProps, useMessageUtils } from "./MsgBox";
+import Image from "./Image";
 
 const TEXT: Record<string, string> = {
     BOOK_INDEX_TITLE: "目录",
@@ -50,6 +51,8 @@ const TEXT: Record<string, string> = {
     CONFIRM_TOGGLE_BORROW: "转换可借阅状态:",
     LINK_TO_PRI: "非公开",
     LINK_TO_INV: "库存",
+    INPUT_REASON: "请输入不可借的理由",
+    EMPTY_REASON_ERR: "必须输入不可借理由",
 };
 
 const { formatText, messageHtmlToComponent } = window.PostUtils;
@@ -75,18 +78,20 @@ function BookType(props: any) {
 
     //hooks must be placed before parse book JSON
     const [loading, setLoading] = React.useState(false);
-    const [msgBox, setMsgBox] = React.useState<MsgBoxProps>({
-        open: false,
-        text: "",
-        serverity: "success",
-    });
-    const onCloseMsg = () => {
-        setMsgBox({
-            open: false,
-            text: "",
-            serverity: "success",
-        });
-    };
+    const mutil = useMessageUtils();
+
+    const postMessage = React.useRef(post.message);
+    if (postMessage.current !== post.message) {
+        mutil.checkAndDisplayAsyncMsg();
+        postMessage.current = post.message;
+    }
+
+    const imgSrc = React.useRef("");
+    const [imgSrcReplace, setImgSrcReplace] = React.useState("");
+
+    // const [imgSrc, setImgSrc] = React.useState(
+    //     `${config.SiteURL}/plugins/${manifest.id}/public/info/${book.id_pub}/cover.jpeg`
+    // );
 
     let book: Book;
 
@@ -96,6 +101,9 @@ function BookType(props: any) {
         const formattedText = messageHtmlToComponent(formatText(message));
         return <div> {formattedText} </div>;
     }
+
+    imgSrc.current = `${config.SiteURL}/plugins/${manifest.id}/public/info/${book.id_pub}/cover.jpeg`;
+    const defaultImgSrc = `${config.SiteURL}/plugins/${manifest.id}/public/noImage.png`;
 
     // It's enough to just send back a post id.
     const handleBorrow = async () => {
@@ -118,7 +126,7 @@ function BookType(props: any) {
         setLoading(false);
 
         if (data.error) {
-            setMsgBox({
+            mutil.setMsgBox({
                 open: true,
                 text: TEXT["BORROW_ERROR"] + data.error,
                 serverity: "error",
@@ -127,7 +135,9 @@ function BookType(props: any) {
             return;
         }
 
-        setMsgBox({
+        //This message doesn't need to justify the message,
+        //because there not modification for book post
+        mutil.setMsgBox({
             open: true,
             text: TEXT["BORROW_SUCC"],
             serverity: "success",
@@ -139,7 +149,20 @@ function BookType(props: any) {
             return;
         }
         book.isAllowedToBorrow = e.target.checked;
+        if (!book.isAllowedToBorrow) {
+            const reason = prompt(TEXT["INPUT_REASON"]);
+            if (!reason) {
+                mutil.setMsgBox({
+                    open: true,
+                    text: TEXT["EMPTY_REASON_ERR"],
+                    serverity: "error",
+                });
+                return;
+            }
+            book.reason_of_disallowed = reason;
+        }
         book.post_id = props.post.id;
+        book.upd_isAllowedToBorrow = true;
         const books = [book];
         const body = JSON.stringify(books);
         const request: BooksRequest = {
@@ -147,30 +170,45 @@ function BookType(props: any) {
             act_user: currentUser.username,
             body: body,
         };
-        setLoading(true);
-        const data = await Client4.doFetch<Result>(
-            `/plugins/${manifest.id}/books`,
-            {
-                method: "POST",
-                body: JSON.stringify(request),
-            }
-        );
-        setLoading(false);
-        if (data.error) {
-            setMsgBox({
+
+        try {
+            setLoading(true);
+            mutil.initAsyncMsg(2, {
                 open: true,
-                text: TEXT["TOGGLE_ALLOWED_ERROR"] + data.error,
+                text: TEXT["TOGGLE_ALLOWED_SUCC"],
+                serverity: "success",
+            });
+            const data = await Client4.doFetch<Result>(
+                `/plugins/${manifest.id}/books`,
+                {
+                    method: "POST",
+                    body: JSON.stringify(request),
+                }
+            );
+            setLoading(false);
+            if (data.error) {
+                mutil.setMsgBox({
+                    open: true,
+                    text: TEXT["TOGGLE_ALLOWED_ERROR"] + data.error,
+                    serverity: "error",
+                });
+                console.error(data);
+                mutil.disableAsyncMsg();
+                return;
+            }
+        } catch (e) {
+            setLoading(false);
+
+            mutil.setMsgBox({
+                open: true,
+                text: TEXT["TOGGLE_ALLOWED_ERROR"] + e,
                 serverity: "error",
             });
-            console.error(data);
+            console.error(e);
+            mutil.disableAsyncMsg();
             return;
         }
-
-        setMsgBox({
-            open: true,
-            text: TEXT["TOGGLE_ALLOWED_SUCC"],
-            serverity: "success",
-        });
+        mutil.checkAndDisplayAsyncMsg();
     };
 
     const StyledImgWrapper = styled(Grid)(({ theme }) => ({
@@ -179,8 +217,8 @@ function BookType(props: any) {
             height: 160 * 0.8,
         },
         [theme.breakpoints.up("sm")]: {
-            width: 125 * 1.5,
-            height: 160 * 1.5,
+            width: 125 * 1,
+            height: 160 * 1,
         },
         "& img": {
             maxWidth: "100%",
@@ -276,21 +314,23 @@ function BookType(props: any) {
                 >
                     {book.category2}
                 </Link>
-                <Link
-                    color="inherit"
-                    onClick={() =>
-                        dispatch(
-                            searchForTerm(
-                                "#c3_" +
-                                    book.category3 +
-                                    " in:" +
-                                    currentChannel.name
+                {book.category3 && (
+                    <Link
+                        color="inherit"
+                        onClick={() =>
+                            dispatch(
+                                searchForTerm(
+                                    "#c3_" +
+                                        book.category3 +
+                                        " in:" +
+                                        currentChannel.name
+                                )
                             )
-                        )
-                    }
-                >
-                    {book.category3}
-                </Link>
+                        }
+                    >
+                        {book.category3}
+                    </Link>
+                )}
             </Breadcrumbs>
         </>
     );
@@ -337,12 +377,17 @@ function BookType(props: any) {
         </Grid>
     );
 
+    const handleImgError = () => {
+        setImgSrcReplace(defaultImgSrc);
+    };
+
     const bookMain = (
         <>
             <Grid container spacing={1}>
                 <StyledImgWrapper item xs={matchesSm ? 2 : 4}>
-                    <img
-                        src={`${config.SiteURL}/plugins/${manifest.id}/public/info/${book.id_pub}/cover.jpeg`}
+                    <Image
+                        src={imgSrcReplace || imgSrc.current}
+                        handleError={handleImgError}
                     />
                 </StyledImgWrapper>
                 <StyledBookMainInfo item xs={matchesSm ? 10 : 8}>
@@ -474,7 +519,7 @@ function BookType(props: any) {
                         }
                     </>
                 ))}
-            <Grid item>
+            <Grid item xs={12} container justifyContent={"flex-end"}>
                 <Fab
                     color="primary"
                     aria-label="borrow"
@@ -488,42 +533,70 @@ function BookType(props: any) {
         </StyledBookState>
     );
 
+    const StyledReasonOfDisallowed = styled(Grid)(({ theme }) => ({
+        color: "red",
+        margin: "0rem",
+        [theme.breakpoints.up("xs")]: {
+            fontSize: "1.2rem",
+        },
+        [theme.breakpoints.up("sm")]: {
+            fontSize: "1.5rem",
+        },
+    }));
+
+    const ReasonOfDisallowed = book.reason_of_disallowed && (
+        <StyledReasonOfDisallowed container justifyContent={"flex-end"}>
+            {book.reason_of_disallowed}
+        </StyledReasonOfDisallowed>
+    );
+
     const main = (
-        <Grid container direction="column" spacing={2}>
-            <Grid item>{bookMain}</Grid>
-            <Grid item>{bookInfo}</Grid>
-            <Grid item>{bookState}</Grid>
+        <Grid container spacing={2}>
+            <Grid item xs={12} sm={8}>
+                {bookMain}
+            </Grid>
+            <Grid item xs={12} sm={4}>
+                <Grid container direction="column" spacing={2}>
+                    <Grid item>{bookInfo}</Grid>
+                    <Grid item>{bookState}</Grid>
+                    {book.reason_of_disallowed && (<Grid item>{ReasonOfDisallowed}</Grid>)}
+                </Grid>
+            </Grid>
         </Grid>
     );
 
-
     const buttons = (
-        <Grid container justifyContent={"flex-end"} alignItems={"center"}>
-            <Grid item>
-                <ButtonGroup size="small">
-                    <Button
-                        href={`/${currentTeam.name}/pl/${book.relations_pub.inventory}`}
-                    >
-                        {TEXT["LINK_TO_INV"]}
-                    </Button>
-                    <Button
-                        href={`/${currentTeam.name}/pl/${book.relations_pub.private}`}
-                    >
-                        {TEXT["LINK_TO_PRI"]}
-                    </Button>
-                    <Button>{TEXT["BTN_UPL_PIC_TITLE"]}</Button>
-                    <Button>{TEXT["BTN_UPL_INTRO_TITLE"]}</Button>
-                    <Button>{TEXT["BTN_UPL_INDEX_TITLE"]}</Button>
-                </ButtonGroup>
+        <>
+            <Grid container justifyContent={"flex-end"} alignItems={"center"}>
+                <Grid item>
+                    <ButtonGroup size="small">
+                        <Button
+                            href={`/${currentTeam.name}/pl/${book.relations_pub.inventory}`}
+                        >
+                            {TEXT["LINK_TO_INV"]}
+                        </Button>
+                        <Button
+                            href={`/${currentTeam.name}/pl/${book.relations_pub.private}`}
+                        >
+                            {TEXT["LINK_TO_PRI"]}
+                        </Button>
+                        <Button>{TEXT["BTN_UPL_PIC_TITLE"]}</Button>
+                        <Button>{TEXT["BTN_UPL_INTRO_TITLE"]}</Button>
+                        <Button>{TEXT["BTN_UPL_INDEX_TITLE"]}</Button>
+                    </ButtonGroup>
+                </Grid>
+                <Grid item>
+                    <Switch
+                        checked={book.isAllowedToBorrow}
+                        name="isAllowedToBorrow"
+                        onChange={handleToggleAllowed}
+                    />
+                </Grid>
             </Grid>
-            <Grid item>
-                <Switch
-                    checked={book.isAllowedToBorrow}
-                    name="isAllowedToBorrow"
-                    onChange={handleToggleAllowed}
-                />
+            <Grid container justifyContent={"flex-end"} alignItems={"center"}>
+                <Grid item>{`ID: ${book.id_pub}`}</Grid>
             </Grid>
-        </Grid>
+        </>
     );
 
     const StyledPaper = styled(Paper)(({ theme }) => ({
@@ -547,16 +620,19 @@ function BookType(props: any) {
         // <IntlProvider locale="en" defaultLocale="en">
         <>
             <StyledPaper>
-                <Grid container direction={"column"}>
+                <Grid container direction={"column"} spacing={1}>
                     <Grid item>{main}</Grid>
-                    <Grid item>{isLibworker() ? buttons : <></>}</Grid>
+                    {isLibworker() && (<Grid item>{buttons}</Grid>)}
                 </Grid>
-                <InProgress open={loading} />
-                <MsgBox {...msgBox} close={onCloseMsg} />
             </StyledPaper>
+            <InProgress open={loading} />
+            <MsgBox {...mutil.msgBox} close={mutil.onCloseMsg} />
         </>
         // </IntlProvider>
     );
 }
 
-export default React.memo(BookType);
+export default React.memo(
+    BookType,
+    (prev, next) => prev.post.message === next.post.message
+);

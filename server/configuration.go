@@ -20,6 +20,7 @@ import (
 // If you add non-reference types to your configuration struct, be sure to rewrite Clone as a deep
 // copy appropriate for your types.
 type configuration struct {
+        BotDisplayName            string
 	TeamName                  string
 	BooksChannelName          string
 	BooksPrivateChannelName   string
@@ -27,8 +28,8 @@ type configuration struct {
 	BorrowWorkflowChannelName string
 	BorrowLimit               int
 	InitialAdmin              string
-        MaxRenewTimes int
-        ExpiredDays int
+	MaxRenewTimes             int
+	ExpiredDays               int
 }
 
 // Clone shallow copies the configuration. Your implementation may require a deep copy if
@@ -93,7 +94,7 @@ func (p *Plugin) OnConfigurationChange() error {
 	// ensure book library bot
 	botID, ensureBotError := p.Helpers.EnsureBot(&model.Bot{
 		Username:    "bookslibrary",
-		DisplayName: "Books Library Bot",
+		DisplayName: configuration.BotDisplayName,
 		Description: "A bot account created by books library plugin.",
 	})
 	if ensureBotError != nil {
@@ -145,6 +146,7 @@ func (p *Plugin) OnConfigurationChange() error {
 
 	// assign initial admin
 	if configuration.InitialAdmin != "" {
+
 		admin, appErr := p.API.GetUserByUsername(configuration.InitialAdmin)
 		if appErr != nil {
 			return errors.Wrap(appErr, "failed to find initial admin")
@@ -175,8 +177,14 @@ func (p *Plugin) OnConfigurationChange() error {
 		}
 	}
 
-        p.maxRenewTimes = configuration.MaxRenewTimes
-        p.expiredDays = configuration.ExpiredDays
+	p.maxRenewTimes = configuration.MaxRenewTimes
+	p.expiredDays = configuration.ExpiredDays
+
+        i18n, err := NewI18n("zh")
+        if err != nil{
+             return errors.Wrap(err, "failed to create i18n")
+        }
+        p.i18n = i18n
 	return nil
 }
 

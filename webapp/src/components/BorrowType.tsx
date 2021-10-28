@@ -43,7 +43,8 @@ import {
 import { getCurrentUser } from "mattermost-redux/selectors/entities/common";
 import { Client4 } from "mattermost-redux/client";
 import InProgress from "./InProgress";
-import MsgBox, { MsgBoxProps } from "./MsgBox";
+import MsgBox, { MsgBoxProps, useMessageUtils } from "./MsgBox";
+import Image from "./Image";
 
 const STATUS_REQUESTED = "R";
 const STATUS_CONFIRMED = "C";
@@ -66,7 +67,7 @@ const TEXT: Record<string, string> = {
     ["WF_" + WORKFLOW_RETURN]: "还书流程",
     ["ST_" + STATUS_REQUESTED]: "借书请求",
     ["ST_" + STATUS_CONFIRMED]: "借书确认",
-    ["ST_" + STATUS_DELIVIED]: "已送出",
+    ["ST_" + STATUS_DELIVIED]: "已收书",
     ["ST_" + STATUS_RENEW_REQUESTED]: "续借请求",
     ["ST_" + STATUS_RENEW_CONFIRMED]: "续借确认",
     ["ST_" + STATUS_RETURN_REQUESTED]: "还书请求",
@@ -74,20 +75,20 @@ const TEXT: Record<string, string> = {
     ["ST_" + STATUS_RETURNED]: "已还书",
     ["DATE_" + STATUS_REQUESTED]: "借阅请求日",
     ["DATE_" + STATUS_CONFIRMED]: "借阅确认日",
-    ["DATE_" + STATUS_DELIVIED]: "借阅送达日",
+    ["DATE_" + STATUS_DELIVIED]: "收书日",
     ["DATE_" + STATUS_RENEW_REQUESTED]: "续借请求日",
     ["DATE_" + STATUS_RENEW_CONFIRMED]: "续借确认日",
     ["DATE_" + STATUS_RETURN_REQUESTED]: "还书请求日",
     ["DATE_" + STATUS_RETURN_CONFIRMED]: "还书确认日",
-    ["DATE_" + STATUS_RETURNED]: "还书送达日",
+    ["DATE_" + STATUS_RETURNED]: "还书日",
     next_step: "下一步",
     date_accordion: "日期",
     CONFIRM_DELETE: "确定删除此借书请求吗？",
-    ALERT_DELETE_ERROR: "删除失败。错误：",
+    ALERT_DELETE_ERROR: "删除失败,错误：",
     ALERT_DELETE_SUCC: "删除成功。",
     CONFIRM_STEP: `确定进入到状态：`,
-    WORKFLOW_ERROR: "工作流请求失败。错误：",
-    WORKFLOW_SUCC: "工作流请求成功。",
+    WORKFLOW_ERROR: "请求失败,错误：",
+    WORKFLOW_SUCC: "请求成功",
     LOAD_CONFIG_ERROR: "加载配置数据失败。错误：",
     REJECT: "拒绝",
 };
@@ -95,43 +96,48 @@ const TEXT: Record<string, string> = {
 function FindStatusInWorkflow(status: string, workflow: Step[]) {
     return workflow.find((step) => step.status === status);
 }
+
+type asyncMsg = {
+    msgBox: MsgBoxProps;
+    wait: number;
+};
+
 function BorrowType(props: any) {
     const post = { ...props.post };
     const message = post.message || "";
+
+    //Fetching server config
     const config = useSelector(getConfig);
-    // const currentTeam = useSelector(getCurrentTeam);
+
+    //Current user
     const currentUser = useSelector(getCurrentUser);
+
+    //Theme
     const theme = useTheme();
     const matchesSm = useMediaQuery(theme.breakpoints.up("sm"));
-    // const matchesXs = useMediaQuery(theme.breakpoints.up("xs"));
 
+    //Fetching plugin config
     const expireDays = useSelector(getExpireDays);
     const maxRenewTimes = useSelector(getMaxRenewTimes);
     const loadStatus = useSelector(getStatus);
     const loadConfigError = useSelector(getError);
+
+    //Loading
     const [loading, setLoading] = React.useState(false);
-    const [msgBox, setMsgBox] = React.useState<MsgBoxProps>({
-        open: false,
-        text: "",
-        serverity: "success",
-    });
-    const onCloseMsg = () => {
-        setMsgBox({
-            open: false,
-            text: "",
-            serverity: "success",
-        });
-    };
 
-    if (loadConfigError) {
-        setMsgBox({
-            open: true,
-            text: TEXT["LOAD_CONFIG_ERROR"] + loadConfigError,
-            serverity: "error",
-        });
-    }
+    //Message
+    const mutil = useMessageUtils();
 
-    const dispatch = useDispatch();
+    //Effect
+    React.useEffect(() => {
+        if (loadConfigError) {
+            mutil.setMsgBox({
+                open: true,
+                text: TEXT["LOAD_CONFIG_ERROR"] + loadConfigError,
+                serverity: "error",
+            });
+        }
+    }, [loadConfigError]);
 
     React.useEffect(() => {
         if (expireDays === -1 || maxRenewTimes === -1) {
@@ -139,18 +145,33 @@ function BorrowType(props: any) {
             if (loadStatus === "loading") {
                 return;
             }
-            dispatch(fetchConfig);
+            dispatch(fetchConfig());
         } else {
             loading && setLoading(false);
         }
     }, [expireDays, maxRenewTimes]);
 
-    // const currentChannel = useSelector(getCurrentChannel);
-    // const formattedText = messageHtmlToComponent(formatText(message));
-    //
-    // const dispatch = useDispatch();
+    //Dispatch
+    const dispatch = useDispatch();
+
+    //Async Message
+    const postMessage = React.useRef(post.message);
+
+    if (postMessage.current !== post.message) {
+        mutil.checkAndDisplayAsyncMsg();
+        postMessage.current = post.message;
+    }
+
+    //Image
+    const imgSrc = React.useRef("");
+    const [imgSrcReplace, setImgSrcReplace] = React.useState("");
+
+    // const [imgSrc, setImgSrc] = React.useState(
+    //     `${config.SiteURL}/plugins/${manifest.id}/public/info/${borrowReq.book_id}/cover.jpeg`
+    // );
     //
 
+    //Parsing message
     let borrow: Borrow;
     let borrowReq: BorrowRequest;
     let currentStep: Step;
@@ -165,6 +186,11 @@ function BorrowType(props: any) {
         const formattedText = messageHtmlToComponent(formatText(message));
         return <div> {formattedText} </div>;
     }
+
+    imgSrc.current = `${config.SiteURL}/plugins/${manifest.id}/public/info/${borrowReq.book_id}/cover.jpeg`;
+    const defaultImgSrc = `${config.SiteURL}/plugins/${manifest.id}/public/noImage.png`;
+
+    /*************** Rendering start *************************/
 
     const StyledImgWrapper = styled(Grid)(({ theme }) => ({
         [theme.breakpoints.up("xs")]: {
@@ -182,17 +208,15 @@ function BorrowType(props: any) {
         },
     }));
 
-    const StyledHeadStatus = styled(Avatar)(({ theme }) => ({
-        headStatus: {
-            backgroundColor: "red",
-            [theme.breakpoints.up("xs")]: {
-                width: "2rem",
-                height: "2rem",
-            },
-            [theme.breakpoints.up("sm")]: {
-                width: "2rem",
-                height: "2rem",
-            },
+    const StyledHeadStatusExpired = styled(Avatar)(({ theme }) => ({
+        backgroundColor: "red",
+        [theme.breakpoints.up("xs")]: {
+            width: "2.5rem",
+            height: "2.5rem",
+        },
+        [theme.breakpoints.up("sm")]: {
+            width: "2rem",
+            height: "2rem",
         },
     }));
 
@@ -208,30 +232,30 @@ function BorrowType(props: any) {
             }
             const action_date = step.action_date;
             const expiredDate = moment(action_date).add(expireDays, "days");
-            if (expiredDate > moment(Date.now())) {
+            if (moment(Date.now()) > expiredDate) {
                 return true;
             }
             return false;
         }
 
-        const rc = findStatusAndCheck(STATUS_RENEW_CONFIRMED)
+        const rc = findStatusAndCheck(STATUS_RENEW_CONFIRMED);
 
-        if(rc !== null) return rc
+        if (rc !== null) return rc;
 
-        const dlv = findStatusAndCheck(STATUS_DELIVIED)
+        const dlv = findStatusAndCheck(STATUS_DELIVIED);
 
-        if(dlv !== null) return dlv
+        if (dlv !== null) return dlv;
 
-        return false
+        return false;
     };
 
     const headStatus = (
         <Grid container>
             <Grid item>
                 {checkExpire() && (
-                    <StyledHeadStatus>
+                    <StyledHeadStatusExpired>
                         <AlarmOnIcon />
-                    </StyledHeadStatus>
+                    </StyledHeadStatusExpired>
                 )}
             </Grid>
         </Grid>
@@ -239,9 +263,19 @@ function BorrowType(props: any) {
 
     const canDelete = () => {
         if (
-            currentStep.status === STATUS_REQUESTED ||
-            currentStep.status === STATUS_CONFIRMED ||
-            currentStep.status === STATUS_RETURNED
+            borrow.role.findIndex(
+                (role) => role === "MASTER" || role === "LIBWORKER"
+            ) !== -1 &&
+            (currentStep.status === STATUS_REQUESTED ||
+                currentStep.status === STATUS_CONFIRMED ||
+                currentStep.status === STATUS_RETURNED)
+        ) {
+            return true;
+        }
+
+        if (
+            borrow.role.findIndex((role) => role === "BORROWER") !== -1 &&
+            currentStep.status === STATUS_REQUESTED
         ) {
             return true;
         }
@@ -255,25 +289,33 @@ function BorrowType(props: any) {
         }
 
         const request: WorkflowRequest = {
-            master_key: borrow.relations_keys.master,
+            master_key:
+                borrow.role.findIndex((role) => role === "MASTER") !== -1
+                    ? post.id
+                    : borrow.relations_keys.master,
             act_user: currentUser.username,
-
             delete: true,
         };
+        try {
+            setLoading(true);
+            const data = await Client4.doFetch<Result>(
+                `/plugins/${manifest.id}/workflow`,
+                {
+                    method: "POST",
+                    body: JSON.stringify(request),
+                }
+            );
+            setLoading(false);
 
-        setLoading(true);
-        const data = await Client4.doFetch<Result>(
-            `/plugins/${manifest.id}/workflow`,
-            {
-                method: "POST",
-                body: JSON.stringify(request),
+            if (data.error) {
+                alert(TEXT["ALERT_DELETE_ERROR"] + data.error);
+                console.error(data);
+                return;
             }
-        );
-        setLoading(false);
-
-        if (data.error) {
-            alert(TEXT["ALERT_DELETE_ERROR"] + data.error);
-            console.error(data);
+        } catch (e) {
+            setLoading(false);
+            alert(TEXT["ALERT_DELETE_ERROR"] + e);
+            console.error(e);
             return;
         }
 
@@ -345,21 +387,11 @@ function BorrowType(props: any) {
             },
 
             "& .PaticipantCommon": {
-                "& .MuiChip-label": {
-                    [theme.breakpoints.up("xs")]: {
-                        fontSize: "0.8rem",
-                    },
-                    [theme.breakpoints.up("sm")]: {
-                        fontSize: "0.8rem",
-                    },
+                [theme.breakpoints.up("xs")]: {
+                    fontSize: "0.8rem",
                 },
-                "& .MuiChip-root": {
-                    [theme.breakpoints.up("xs")]: {
-                        height: "2rem",
-                    },
-                    [theme.breakpoints.up("sm")]: {
-                        height: "2rem",
-                    },
+                [theme.breakpoints.up("sm")]: {
+                    fontSize: "0.8rem",
                 },
             },
 
@@ -378,14 +410,16 @@ function BorrowType(props: any) {
     const participants = (
         <Grid container spacing={1}>
             <Grid item>
-                <Chip
-                    size={"medium"}
-                    // variant={"outlined"}
-                    icon={<BorrowIcon />}
-                    color="primary"
-                    label={borrow.dataOrImage.borrower_name}
-                    className={"PaticipantCommon PaticipantBorrower"}
-                />
+                {borrow.dataOrImage.borrower_name && (
+                    <Chip
+                        size={"medium"}
+                        // variant={"outlined"}
+                        icon={<BorrowIcon />}
+                        color="primary"
+                        label={borrow.dataOrImage.borrower_name}
+                        className={"PaticipantCommon PaticipantBorrower"}
+                    />
+                )}
             </Grid>
             <Grid item>
                 <Chip
@@ -398,7 +432,7 @@ function BorrowType(props: any) {
                 />
             </Grid>
             <Grid item>
-                {borrow.dataOrImage.keeper_names.map((keeper_name) => (
+                {borrow.dataOrImage.keeper_names?.map((keeper_name) => (
                     <Chip
                         size={"medium"}
                         // variant={"outlined"}
@@ -431,17 +465,23 @@ function BorrowType(props: any) {
         },
     }));
 
-    const exploreWF = (cb: (s: Step) => boolean) => {
+    type wfCallBack = (s: Step, i: number) => boolean;
+
+    const exploreWF = (cb: wfCallBack) => {
+        let passed: { [key: number]: boolean } = {};
+
         // return bool value of cb
-        const next = (step: Step, cb: (s: Step) => boolean) => {
-            if (cb(step)) {
-                return true;
+        const next = (step: Step, cb: wfCallBack, index: number) => {
+            passed[index] = true;
+
+            if (cb(step, index)) {
+                return;
             }
 
             const nextStepIndex = step.next_step_index;
 
             if (nextStepIndex === null) {
-                return false;
+                return;
             }
 
             for (let i of nextStepIndex) {
@@ -450,18 +490,18 @@ function BorrowType(props: any) {
                     step.status === STATUS_RENEW_CONFIRMED &&
                     nextStep.status === STATUS_RENEW_REQUESTED
                 ) {
-                    return false;
+                    return;
                 }
 
-                if (next(nextStep, cb)) {
-                    return true;
-                }
+                if (passed[i]) continue;
+
+                next(nextStep, cb, i);
             }
 
-            return false;
+            return;
         };
 
-        next(workflow[0], cb);
+        next(workflow[0], cb, 0);
     };
 
     const addDates = () => {
@@ -544,35 +584,41 @@ function BorrowType(props: any) {
 
     let localWorkflow: Step[] = [];
     let localStepIndex: number = -1;
+    let lastIndex = -1;
+    let lastIndexes: number[] = [];
 
-    exploreWF((step) => {
+    exploreWF((step, index) => {
         if (step.workflow_type !== currentStep.workflow_type) {
+            lastIndex = index;
             return false;
         }
 
+        lastIndexes.push(lastIndex);
         localWorkflow.push(step);
 
         if (step.completed) {
             localStepIndex++;
         }
 
+        lastIndex = index;
         return false;
     });
-
+    // const graidentColor = "linear-gradient( 109.6deg,  rgba(45,116,213,1) 11.2%, rgba(121,137,212,1) 91.2% )"
+    // background-image: radial-gradient( circle farthest-corner at 10% 20%,  rgba(14,174,87,1) 0%, rgba(12,116,117,1) 90% );
+    const graidentColor =
+        "radial-gradient( circle farthest-corner at 10% 20%,  rgba(14,174,87,1) 0%, rgba(12,116,117,1) 90% )";
     const ColorlibConnector = withStyles({
         alternativeLabel: {
             top: 22,
         },
         active: {
             "& $line": {
-                backgroundImage:
-                    "linear-gradient( 95deg,rgb(242,113,33) 0%,rgb(233,64,87) 50%,rgb(138,35,135) 100%)",
+                backgroundImage: graidentColor,
             },
         },
         completed: {
             "& $line": {
-                backgroundImage:
-                    "linear-gradient( 95deg,rgb(242,113,33) 0%,rgb(233,64,87) 50%,rgb(138,35,135) 100%)",
+                backgroundImage: graidentColor,
             },
         },
         line: {
@@ -596,32 +642,30 @@ function BorrowType(props: any) {
             alignItems: "center",
         },
         active: {
-            backgroundImage:
-                "linear-gradient( 136deg, rgb(242,113,33) 0%, rgb(233,64,87) 50%, rgb(138,35,135) 100%)",
+            backgroundImage: graidentColor,
             boxShadow: "0 4px 10px 0 rgba(0,0,0,.25)",
         },
         completed: {
-            backgroundImage:
-                "linear-gradient( 136deg, rgb(242,113,33) 0%, rgb(233,64,87) 50%, rgb(138,35,135) 100%)",
+            backgroundImage: graidentColor,
         },
     });
 
+    //Icon shows the actor who has executed this activity,
+    //this is conceptly differenct from the meaning of ActRole in Step, which means who WILL execute next activity
     function ColorlibStepIcon(props: StepIconProps) {
         const classes = useColorlibStepIconStyles();
         const { active, completed } = props;
-
-        // const icons: { [index: string]: React.ReactElement } = {
-        //     1: <BorrowIcon />,
-        //     2: <WorkerIcon />,
-        //     3: <HouseIcon />,
-        // };
 
         let icons: { [index: string]: React.ReactElement } = {};
 
         localWorkflow.forEach((step, index) => {
             let iconIndex = index + 1;
             let icon: React.ReactElement = <div />;
-            switch (step.actor_role) {
+            const executedRole =
+                lastIndexes[index] === -1
+                    ? "BORROWER"
+                    : workflow[lastIndexes[index]].actor_role;
+            switch (executedRole) {
                 case "BORROWER":
                     icon = <BorrowIcon />;
                     break;
@@ -659,37 +703,59 @@ function BorrowType(props: any) {
         }
 
         const request: WorkflowRequest = {
-            master_key: borrow.relations_keys.master,
+            master_key:
+                borrow.role.findIndex((role) => role === "MASTER") !== -1
+                    ? post.id
+                    : borrow.relations_keys.master,
             act_user: currentUser.username,
             next_step_index: nextStepIndex,
-            backward:backward,
+            backward: backward,
         };
 
-        setLoading(true);
-        const data = await Client4.doFetch<Result>(
-            `/plugins/${manifest.id}/workflow`,
-            {
-                method: "POST",
-                body: JSON.stringify(request),
-            }
-        );
-        setLoading(false);
+        try {
+            setLoading(true);
 
-        if (data.error) {
-            setMsgBox({
+            mutil.initAsyncMsg(2, {
                 open: true,
-                text: TEXT["WORKFLOW_ERROR"] + data.error,
+                text: TEXT["WORKFLOW_SUCC"],
+                serverity: "success",
+            });
+            const data = await Client4.doFetch<Result>(
+                `/plugins/${manifest.id}/workflow`,
+                {
+                    method: "POST",
+                    body: JSON.stringify(request),
+                }
+            );
+            //If process successfully, the following logic won't be executed,
+            //because the component is being rendered in the fetching process..
+            //So we have to check the state and recover in another rendering's useEffect()
+            setLoading(false);
+
+            if (data.error) {
+                mutil.setMsgBox({
+                    open: true,
+                    text: TEXT["WORKFLOW_ERROR"] + data.error,
+                    serverity: "error",
+                });
+                console.error(data);
+                mutil.disableAsyncMsg();
+                return;
+            }
+        } catch (e) {
+            setLoading(false);
+
+            mutil.setMsgBox({
+                open: true,
+                text: TEXT["WORKFLOW_ERROR"] + e,
                 serverity: "error",
             });
-            console.error(data);
+            console.error(e);
+            mutil.disableAsyncMsg();
             return;
         }
 
-        setMsgBox({
-            open: true,
-            text: TEXT["WORKFLOW_SUCC"],
-            serverity: "success",
-        });
+        mutil.checkAndDisplayAsyncMsg();
     };
 
     const addStepButtons = () => {
@@ -697,29 +763,40 @@ function BorrowType(props: any) {
 
         if (
             currentStep.actor_role === "LIBWORKER" &&
-            currentStep.status !== STATUS_REQUESTED
+            currentStep.status !== STATUS_REQUESTED &&
+            currentStep.status !== STATUS_RETURNED
         ) {
             btns.push(
                 <StyledWFButton
                     variant={"contained"}
                     color={"secondary"}
-                    onClick={() => handleStep(currentStep.last_step_index, true)}
+                    onClick={() =>
+                        handleStep(currentStep.last_step_index, true)
+                    }
                 >
                     {TEXT["REJECT"]}
                 </StyledWFButton>
             );
         }
 
-        for (let n of currentStep.next_step_index) {
-            btns.push(
-                <StyledWFButton
-                    variant={"contained"}
-                    color={"primary"}
-                    onClick={() => handleStep(n, false)}
-                >
-                    {TEXT["ST_" + workflow[n].status]}
-                </StyledWFButton>
-            );
+        if (currentStep.next_step_index !== null) {
+            for (let n of currentStep.next_step_index) {
+                if (
+                    workflow[n].status === STATUS_RENEW_REQUESTED &&
+                    borrow.dataOrImage.renewed_times >= maxRenewTimes
+                )
+                    continue;
+
+                btns.push(
+                    <StyledWFButton
+                        variant={"contained"}
+                        color={"primary"}
+                        onClick={() => handleStep(n, false)}
+                    >
+                        {TEXT["ST_" + workflow[n].status]}
+                    </StyledWFButton>
+                );
+            }
         }
 
         return btns;
@@ -727,8 +804,9 @@ function BorrowType(props: any) {
 
     const showWfButtons = () => {
         if (
-            currentStep.actor_role === borrow.role ||
-            borrow.role === "MASTER"
+            borrow.role.findIndex((role) => {
+                return currentStep.actor_role === role || role === "MASTER";
+            }) !== -1
         ) {
             return true;
         }
@@ -755,7 +833,11 @@ function BorrowType(props: any) {
                     </Step>
                 ))}
             </StyledWFStepper>
-            {showWfButtons() && <Grid container>{addStepButtons()}</Grid>}
+            {showWfButtons() && (
+                <Grid container justifyContent={"flex-end"}>
+                    {addStepButtons()}
+                </Grid>
+            )}
         </Grid>
     );
 
@@ -766,11 +848,16 @@ function BorrowType(props: any) {
         </Grid>
     );
 
+    const handleImgError = () => {
+        setImgSrcReplace(defaultImgSrc);
+    };
+
     const main = (
         <Grid container spacing={2}>
             <StyledImgWrapper item xs={matchesSm ? 2 : 4}>
-                <img
-                    src={`${config.SiteURL}/plugins/${manifest.id}/public/info/${borrowReq.book_id}/cover.jpeg`}
+                <Image
+                    src={imgSrcReplace || imgSrc.current}
+                    handleError={handleImgError}
                 />
             </StyledImgWrapper>
             <Grid item xs={matchesSm ? 4 : 8}>
@@ -787,20 +874,19 @@ function BorrowType(props: any) {
         margin: "auto",
         maxWidth: "100%",
         position: "relative",
-        "& svg": {
-            fontSize: "1rem",
-        },
     }));
 
     return (
-        <StyledPaper>
-            <Grid container direction={"column"}>
-                <Grid item>{titleBar}</Grid>
-                <Grid item>{main}</Grid>
-            </Grid>
+        <>
+            <StyledPaper>
+                <Grid container direction={"column"}>
+                    <Grid item>{titleBar}</Grid>
+                    <Grid item>{main}</Grid>
+                </Grid>
+            </StyledPaper>
             <InProgress open={loading} />
-            <MsgBox {...msgBox} close={onCloseMsg} />
-        </StyledPaper>
+            <MsgBox {...mutil.msgBox} close={mutil.onCloseMsg} />
+        </>
     );
 }
 
@@ -809,4 +895,7 @@ BorrowType.propTypes = {
     theme: PropTypes.object.isRequired,
 };
 
-export default React.memo(BorrowType);
+export default React.memo(
+    BorrowType,
+    (prev, next) => prev.post.message === next.post.message
+);

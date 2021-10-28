@@ -35,12 +35,14 @@ interface Book {
     libworker_users: string[];
     libworker_names: string[];
     isAllowedToBorrow: boolean;
+    reason_of_disallowed: string;
     tags: string[];
     post_id: string;
     relations_pub: {
         private: string;
         inventory: string;
     };
+    upd_isAllowedToBorrow: boolean;
 }
 
 interface BooksRequest {
@@ -93,13 +95,16 @@ interface BorrowRequest {
     keeper_names: string[];
     workflow: Step[];
     step_index: number;
+    renewed_times: number;
     tags: string[];
 }
+
+type roleType = "MASTER" | "BORROWER" | "LIBWORKER" | "KEEPER";
 
 interface Borrow {
     // put the dataOrImage to be first so as to hide the record of Thread view
     dataOrImage: BorrowRequest;
-    role: "MASTER" | "BORROWER" | "LIBWORKER" | "KEEPER";
+    role: roleType[];
     relations_keys: {
         book: string;
         master: string;
@@ -114,5 +119,5 @@ interface WorkflowRequest {
     act_user: string;
     next_step_index?: number;
     delete?: boolean;
-    backward?:boolean;
+    backward?: boolean;
 }

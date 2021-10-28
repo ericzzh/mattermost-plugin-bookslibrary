@@ -1,3 +1,4 @@
+import React from "react"
 import CircularProgress from "@material-ui/core/CircularProgress";
 import Backdrop from "@material-ui/core/Backdrop";
 import { styled } from "@material-ui/core/styles";
@@ -6,7 +7,7 @@ export type InProgressProps = {
     open: boolean;
 };
 
-export default function InProgress(props: InProgressProps) {
+function InProgress(props: InProgressProps) {
     const StyledBackdrop = styled(Backdrop)(({ theme }) => ({
         position: "absolute",
         zIndex:theme.zIndex.drawer + 1,
@@ -19,3 +20,5 @@ export default function InProgress(props: InProgressProps) {
         </StyledBackdrop>
     );
 }
+
+export default React.memo(InProgress)

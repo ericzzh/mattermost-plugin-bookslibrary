@@ -46,6 +46,7 @@ type injectOpt struct {
 	onSearchPosts func(api *plugintest.API, plugin *Plugin, td *TestData) func()
 	invInject     *BookInventory
 	onGetPostErr  func(id string) *model.AppError
+	bookInjectOpt *bookInjectOptions
 }
 
 //because some injections need the data generated, so have to make the inject as seperated
@@ -60,7 +61,11 @@ func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
 	}
 	env := workflowEnv{}
 
-	env.td = NewTestData()
+	if inject.bookInjectOpt != nil {
+		env.td = NewTestData(*inject.bookInjectOpt)
+	} else {
+		env.td = NewTestData()
+	}
 	env.td.ABookInvInjected = inject.invInject
 
 	env.api = env.td.ApiMockCommon()
@@ -621,7 +626,7 @@ func TestHandleWorkflow(t *testing.T) {
 					{
 						role:                KEEPER,
 						chid:                td.Keeper1Id_botId,
-						notifiy:             true,
+						notifiy:             false,
 						LastActualStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 						brq: BorrowRequest{
 							StepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
@@ -636,7 +641,7 @@ func TestHandleWorkflow(t *testing.T) {
 					{
 						role:                KEEPER,
 						chid:                td.Keeper2Id_botId,
-						notifiy:             true,
+						notifiy:             false,
 						LastActualStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
 						brq: BorrowRequest{
 							StepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
@@ -875,7 +880,6 @@ func TestHandleWorkflow(t *testing.T) {
 				assert.Equalf(t, test.brq.StepIndex, newBorrow.DataOrImage.StepIndex,
 					"in step: %v, role: %v", expStep, test.role)
 
-
 				assert.GreaterOrEqualf(t, actStep.ActionDate, baseLineTime,
 					"in step: %v, role: %v", expStep, test.role)
 
@@ -1050,6 +1054,36 @@ func TestInvFlow(t *testing.T) {
 
 	})
 
+	t.Run("error if unsufficient", func(t *testing.T) {
+		env := newWorkflowEnv()
+		env.td.ABookInv.Stock = 1
+
+		var (
+			w *httptest.ResponseRecorder
+		)
+		for _, status := range []string{
+			STATUS_CONFIRMED,
+			STATUS_CONFIRMED,
+		} {
+			wfrJson, _ := json.Marshal(WorkflowRequest{
+				ActorUser:     env.worker,
+				MasterPostKey: env.createdPid[env.td.BorChannelId],
+				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
+			})
+
+			w = httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			env.plugin.ServeHTTP(nil, w, r)
+
+		}
+
+		result := w.Result()
+		var resultObj *Result
+		json.NewDecoder(result.Body).Decode(&resultObj)
+		assert.NotEmptyf(t, resultObj.Error, "should be error")
+
+	})
+
 	t.Run("be unavailable if unsufficient, available if returned. ", func(t *testing.T) {
 		env := newWorkflowEnv(injectOpt{
 			invInject: &BookInventory{
@@ -1082,6 +1116,7 @@ func TestInvFlow(t *testing.T) {
 		var pub BookPublic
 		json.Unmarshal([]byte(postPub.Message), &pub)
 		assert.Equalf(t, false, pub.IsAllowedToBorrow, "should be unavailable")
+                assert.Equalf(t, "无库存", pub.ReasonOfDisallowed, "should be text of no-stock")
 
 		td.ABookPub.IsAllowedToBorrow = false
 
@@ -1105,9 +1140,267 @@ func TestInvFlow(t *testing.T) {
 		postPub = env.td.RealBookPostUpd[td.BookChIdPub]
 		json.Unmarshal([]byte(postPub.Message), &pub)
 		assert.Equalf(t, true, pub.IsAllowedToBorrow, "should be available")
+                assert.Equalf(t, "", pub.ReasonOfDisallowed, "should be cleared")
 
 	})
 
+	t.Run("no toggling on if manually disallowed", func(t *testing.T) {
+
+		env := newWorkflowEnv()
+		env.td.ABookInv.Stock = 1
+		env.td.ABookPub.IsAllowedToBorrow = false
+		env.td.ABookPub.ManuallyDisallowed = true
+
+		var (
+			w *httptest.ResponseRecorder
+		)
+		for _, status := range []string{
+			STATUS_CONFIRMED,
+			STATUS_DELIVIED,
+			STATUS_RETURN_REQUESTED,
+			STATUS_RETURN_CONFIRMED,
+			STATUS_RETURNED,
+		} {
+			wfrJson, _ := json.Marshal(WorkflowRequest{
+				ActorUser:     env.worker,
+				MasterPostKey: env.createdPid[env.td.BorChannelId],
+				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
+			})
+
+			w = httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			env.plugin.ServeHTTP(nil, w, r)
+
+		}
+
+		result := w.Result()
+		var resultObj *Result
+		json.NewDecoder(result.Body).Decode(&resultObj)
+		assert.Emptyf(t, resultObj.Error, "should not be error")
+
+		var pub BookPublic
+		postPub := env.td.RealBookPostUpd[env.td.BookChIdPub]
+		json.Unmarshal([]byte(postPub.Message), &pub)
+		assert.Equalf(t, false, pub.IsAllowedToBorrow, "should not be available")
+		assert.Equalf(t, true, pub.ManuallyDisallowed, "manully disallowed should not be affected")
+
+	})
+
+}
+
+func TestRevert(t *testing.T) {
+
+	type testResult struct {
+		inv        BookInventory
+		renewTimes int
+	}
+
+	type testData struct {
+		wfr    WorkflowRequest
+		result testResult
+	}
+
+	t.Run("normal reverted", func(t *testing.T) {
+
+		env := newWorkflowEnv()
+		env.td.ABookInv = &BookInventory{
+			Stock:       1,
+			TransmitOut: 0,
+			Lending:     0,
+			TransmitIn:  0,
+		}
+
+		wf := env.td.EmptyWorkflow
+
+		//move to last initially
+		for _, status := range []string{
+			STATUS_CONFIRMED,
+			STATUS_DELIVIED,
+			STATUS_RENEW_REQUESTED,
+			STATUS_RENEW_CONFIRMED,
+			STATUS_RETURN_REQUESTED,
+			STATUS_RETURN_CONFIRMED,
+			STATUS_RETURNED,
+		} {
+
+			wfrJson, _ := json.Marshal(WorkflowRequest{
+				ActorUser:     env.worker,
+				MasterPostKey: env.createdPid[env.td.BorChannelId],
+				NextStepIndex: _getIndexByStatus(status, wf),
+			})
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			env.plugin.ServeHTTP(nil, w, r)
+		}
+
+		testWorkflow := []testData{
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						TransmitIn: 1,
+					},
+					renewTimes: 1,
+				},
+			},
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						Lending: 1,
+					},
+					renewTimes: 1,
+				},
+			},
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						Lending: 1,
+					},
+					renewTimes: 1,
+				},
+			},
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						Lending: 1,
+					},
+					renewTimes: 0,
+				},
+			},
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						Lending: 1,
+					},
+					renewTimes: 0,
+				},
+			},
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						TransmitOut: 1,
+					},
+					renewTimes: 0,
+				},
+			},
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						Stock: 1,
+					},
+					renewTimes: 0,
+				},
+			},
+		}
+
+		for _, step := range testWorkflow {
+			step.wfr.ActorUser = env.worker
+			step.wfr.MasterPostKey = env.createdPid[env.td.BorChannelId]
+			step.wfr.Backward = true
+			wfrJson, _ := json.Marshal(step.wfr)
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			env.plugin.ServeHTTP(nil, w, r)
+
+			var bor Borrow
+			postBor := env.realbrUpdPosts[env.td.BorChannelId]
+			json.Unmarshal([]byte(postBor.Message), &bor)
+
+			//Inventory check
+			invPost := env.td.RealBookPostUpd[env.td.BookChIdInv]
+			var inv BookInventory
+			json.Unmarshal([]byte(invPost.Message), &inv)
+			inv.Id = ""
+			inv.Name = ""
+			inv.Relations = nil
+			assert.Equalf(t, step.result.inv, inv, "inventory should be same, at %v", wf[step.wfr.NextStepIndex].Status)
+
+			if step.result.inv.Stock == 0 {
+				assert.Equalf(t, false, env.td.ABookPub.IsAllowedToBorrow, "should not be allowed to borrow")
+                                assert.Equalf(t, "无库存",env.td.ABookPub.ReasonOfDisallowed, "should be text of no-stock")
+                                
+			} else {
+				assert.Equalf(t, true, env.td.ABookPub.IsAllowedToBorrow, "should be allowed to borrow")
+                                assert.Equalf(t, "",env.td.ABookPub.ReasonOfDisallowed, "should be cleared")
+			}
+
+			//Renew times check
+			assert.Equalf(t, step.result.renewTimes, bor.DataOrImage.RenewedTimes, "renew times is not correct")
+		}
+
+	})
+
+	t.Run("normal reverted, no toggling", func(t *testing.T) {
+
+		env := newWorkflowEnv()
+		env.td.ABookInv = &BookInventory{
+			Stock:       1,
+			TransmitOut: 0,
+			Lending:     0,
+			TransmitIn:  0,
+		}
+
+		wf := env.td.EmptyWorkflow
+
+		//move to last initially
+		for _, status := range []string{
+			STATUS_CONFIRMED,
+		} {
+
+			wfrJson, _ := json.Marshal(WorkflowRequest{
+				ActorUser:     env.worker,
+				MasterPostKey: env.createdPid[env.td.BorChannelId],
+				NextStepIndex: _getIndexByStatus(status, wf),
+			})
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			env.plugin.ServeHTTP(nil, w, r)
+		}
+
+                env.td.ABookPub.IsAllowedToBorrow = false
+                env.td.ABookPub.ManuallyDisallowed = true
+
+		for _, status := range []string{
+			STATUS_REQUESTED,
+		} {
+
+			wfrJson, _ := json.Marshal(WorkflowRequest{
+				ActorUser:     env.worker,
+				MasterPostKey: env.createdPid[env.td.BorChannelId],
+				NextStepIndex: _getIndexByStatus(status, wf),
+				Backward:      true,
+			})
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			env.plugin.ServeHTTP(nil, w, r)
+		}
+		assert.Equalf(t, false, env.td.ABookPub.IsAllowedToBorrow, "still should not be allowed to borrow")
+		assert.Equalf(t, true, env.td.ABookPub.ManuallyDisallowed, "still should be true")
+	})
 }
 
 func TestLock(t *testing.T) {
@@ -1242,6 +1535,18 @@ func TestLock(t *testing.T) {
 		wait.Wait()
 
 	})
+
+	t.Run("lock with same role", func(*testing.T) {
+
+		env := newWorkflowEnv(injectOpt{
+			bookInjectOpt: &bookInjectOptions{
+				keepersAsLibworkers: true,
+			},
+		})
+
+		_sendAndCheckATestWFRequest(t, env, STATUS_CONFIRMED, false)
+
+	})
 }
 
 func _sendAndCheckATestWFRequest(t *testing.T, env *workflowEnv, status string, assertError bool) {
@@ -1263,9 +1568,9 @@ func _sendAndCheckATestWFRequest(t *testing.T, env *workflowEnv, status string, 
 	json.NewDecoder(result.Body).Decode(&resultObj)
 
 	if assertError {
-		assert.NotEmpty(t, resultObj.Error, "", "should have error")
+		assert.NotEmpty(t, resultObj.Error, "should have error")
 	} else {
-		assert.Equalf(t, resultObj.Error, "", "should normally end")
+		assert.Empty(t, resultObj.Error, "should normally end")
 	}
 }
 
@@ -1481,7 +1786,7 @@ func TestBorrowRestrict(t *testing.T) {
 		resTest := returned.HttpResponse.Result()
 		var res Result
 		json.NewDecoder(resTest.Body).Decode(&res)
-		assert.Equalf(t, "borrowing-book-limited", res.Error, "should be error")
+		assert.Equalf(t, env.plugin.i18n.GetText(ErrBorrowingLimited.Error()), res.Error, "should be error")
 	})
 
 	t.Run("error_unsufficent_stock", func(t *testing.T) {
@@ -1494,7 +1799,7 @@ func TestBorrowRestrict(t *testing.T) {
 		resTest := returned.HttpResponse.Result()
 		var res Result
 		json.NewDecoder(resTest.Body).Decode(&res)
-		assert.Equalf(t, ErrNoStock.Error(), res.Error, "should be error")
+		assert.Equalf(t, env.plugin.i18n.GetText(ErrNoStock.Error()), res.Error, "should be error")
 
 		postPub := env.td.RealBookPostUpd[env.td.BookChIdPub]
 		var pub BookPublic
@@ -1595,6 +1900,46 @@ func TestRenewTimes(t *testing.T) {
 		confirmedStep := bor.DataOrImage.Worflow[_getIndexByStatus(STATUS_RENEW_CONFIRMED, env.td.EmptyWorkflow)]
 		assert.Equalf(t, false, confirmedStep.Completed, "completed should be cleard")
 		assert.Equalf(t, int64(0), confirmedStep.ActionDate, "action date should be cleared")
+
+	})
+
+	t.Run("backward movement, renew times should not be updated", func(t *testing.T) {
+
+		env := newWorkflowEnv()
+
+		for _, status := range []string{
+			STATUS_CONFIRMED,
+			STATUS_DELIVIED,
+			STATUS_RENEW_REQUESTED,
+			STATUS_RENEW_CONFIRMED,
+			STATUS_RETURN_REQUESTED,
+		} {
+			wfrJson, _ := json.Marshal(WorkflowRequest{
+				ActorUser:     env.worker,
+				MasterPostKey: env.createdPid[env.td.BorChannelId],
+				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
+			})
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+			env.plugin.ServeHTTP(nil, w, r)
+		}
+
+		wfrJson, _ := json.Marshal(WorkflowRequest{
+			ActorUser:     env.worker,
+			MasterPostKey: env.createdPid[env.td.BorChannelId],
+			NextStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, env.td.EmptyWorkflow),
+			Backward:      true,
+		})
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+		env.plugin.ServeHTTP(nil, w, r)
+
+		var bor Borrow
+		postBor := env.realbrUpdPosts[env.td.BorChannelId]
+		json.Unmarshal([]byte(postBor.Message), &bor)
+		assert.Equalf(t, 1, bor.DataOrImage.RenewedTimes, "backward, renew times should not be updated.")
 
 	})
 
@@ -1835,14 +2180,40 @@ func TestBorrowDelete(t *testing.T) {
 		}
 
 		env := newEnv()
+		env.td.ABookInv = &BookInventory{
+			Stock:       1,
+			TransmitOut: 0,
+			Lending:     0,
+			TransmitIn:  0,
+		}
 		performNext(env.workflowEnv, STATUS_CONFIRMED, false)
 		inv := getInv(env.workflowEnv)
-		assert.Equalf(t, 2, inv.Stock, "stock")
+		assert.Equalf(t, 0, inv.Stock, "stock")
+                assert.Equalf(t, "无库存", env.td.ABookPub.ReasonOfDisallowed, "reason should be set")
 		assert.Equalf(t, 1, inv.TransmitOut, "stock")
 		performDelete(env.workflowEnv, false)
 		inv = getInv(env.workflowEnv)
-		assert.Equalf(t, 3, inv.Stock, "stock")
+		assert.Equalf(t, 1, inv.Stock, "stock")
 		assert.Equalf(t, 0, inv.TransmitOut, "stock")
+		assert.Equalf(t, true, env.td.ABookPub.IsAllowedToBorrow, "stock should be available")
+                assert.Equalf(t, "", env.td.ABookPub.ReasonOfDisallowed, "reason should be cleared")
+	})
+
+	t.Run("delete, not toggling", func(t *testing.T) {
+
+		env := newEnv()
+		env.td.ABookInv = &BookInventory{
+			Stock:       1,
+			TransmitOut: 0,
+			Lending:     0,
+			TransmitIn:  0,
+		}
+                env.td.ABookPub.IsAllowedToBorrow = false
+                env.td.ABookPub.ManuallyDisallowed = true
+		performNext(env.workflowEnv, STATUS_CONFIRMED, false)
+		performDelete(env.workflowEnv, false)
+		assert.Equalf(t, false, env.td.ABookPub.IsAllowedToBorrow, "stock should be still not available")
+		assert.Equalf(t, true, env.td.ABookPub.ManuallyDisallowed, "manually disallowed should be changed")
 	})
 
 	t.Run("delete broken data", func(t *testing.T) {

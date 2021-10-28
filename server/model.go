@@ -30,26 +30,28 @@ const (
 
 type Relations map[string]string
 type BookPublic struct {
-	Id                string    `json:"id_pub"`
-	Name              string    `json:"name_pub"`
-	NameEn            string    `json:"name_en"`
-	Category1         string    `json:"category1"`
-	Category2         string    `json:"category2"`
-	Category3         string    `json:"category3"`
-	Author            string    `json:"author"`
-	AuthorEn          string    `json:"author_en"`
-	Translator        string    `json:"translator"`
-	TranslatorEn      string    `json:"translator_en"`
-	Publisher         string    `json:"publisher"`
-	PublisherEn       string    `json:"publisher_en"`
-	PublishDate       string    `json:"publish_date"`
-	Intro             string    `json:"introduction"`
-	BookIndex         string    `json:"book_index"`
-	LibworkerUsers    []string  `json:"libworker_users"`
-	LibworkerNames    []string  `json:"libworker_names,omitempty"`
-	IsAllowedToBorrow bool      `json:"isAllowedToBorrow"`
-	Tags              []string  `json:"tags,omitempty"`
-	Relations         Relations `json:"relations_pub,omitempty"`
+	Id                 string    `json:"id_pub"`
+	Name               string    `json:"name_pub"`
+	NameEn             string    `json:"name_en"`
+	Category1          string    `json:"category1"`
+	Category2          string    `json:"category2"`
+	Category3          string    `json:"category3"`
+	Author             string    `json:"author"`
+	AuthorEn           string    `json:"author_en"`
+	Translator         string    `json:"translator"`
+	TranslatorEn       string    `json:"translator_en"`
+	Publisher          string    `json:"publisher"`
+	PublisherEn        string    `json:"publisher_en"`
+	PublishDate        string    `json:"publish_date"`
+	Intro              string    `json:"introduction"`
+	BookIndex          string    `json:"book_index"`
+	LibworkerUsers     []string  `json:"libworker_users"`
+	LibworkerNames     []string  `json:"libworker_names,omitempty"`
+	IsAllowedToBorrow  bool      `json:"isAllowedToBorrow"`
+        ReasonOfDisallowed string    `json:"reason_of_disallowed"`
+	ManuallyDisallowed bool      `json:"manually_disallowed"`
+	Tags               []string  `json:"tags,omitempty"`
+	Relations          Relations `json:"relations_pub,omitempty"`
 }
 
 type BookPrivate struct {
@@ -71,8 +73,9 @@ type BookInventory struct {
 }
 
 type Upload struct {
-	Post_id string `json:"post_id"`
-	Delete  bool   `json:"delete"`
+	Post_id              string `json:"post_id"`
+	Delete               bool   `json:"delete"`
+	UpdIsAllowedToBorrow bool   `json:"upd_isAllowedToBorrow"`
 }
 
 const (

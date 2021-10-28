@@ -57,11 +57,11 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 		switch {
 		case errors.Is(err, ErrBorrowingLimited):
 			resp, _ = json.Marshal(Result{
-				Error: err.Error(),
+				Error: p.i18n.GetText(err.Error()),
 			})
 		case errors.Is(err, ErrNoStock):
 			resp, _ = json.Marshal(Result{
-				Error: err.Error(),
+				Error: p.i18n.GetText(err.Error()),
 			})
 		default:
 			p.API.LogError("Failed to call check conditons.", "err", fmt.Sprintf("%+v", err))
@@ -240,8 +240,8 @@ func (p *Plugin) _makeAndSendBorrowRequest(user string, channelId string, role [
 		UserId:    p.botID,
 		ChannelId: channelId,
 		// Message:   string(borrow_data_bytes),
-		Message:   "",
-		Type:      "custom_borrow_type",
+		Message: "",
+		Type:    "custom_borrow_type",
 	}); appErr != nil {
 		return nil, nil, errors.Wrapf(appErr, "Failed to post a borrow record. role: %v, user: %v", role, user)
 	}
@@ -259,7 +259,7 @@ func (p *Plugin) _updateRelations(post *model.Post, relations RelationKeys, borr
 
 	borrow.RelationKeys = relations
 
-	borrow_data_bytes, err := json.MarshalIndent(borrow,"","  ")
+	borrow_data_bytes, err := json.MarshalIndent(borrow, "", "  ")
 	if err != nil {
 		return errors.Wrapf(err, "Failed to convert to a borrow record. role: %v", borrow.Role)
 	}
@@ -405,7 +405,7 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER, KEEPER,
 			},
-                        LastActualStepIndex: -1,
+			LastActualStepIndex: -1,
 		},
 		{
 			WorkflowType:  WORKFLOW_BORROW,
@@ -417,7 +417,7 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER, KEEPER,
 			},
-                        LastActualStepIndex: -1,
+			LastActualStepIndex: -1,
 		},
 		{
 			WorkflowType:  WORKFLOW_BORROW,
@@ -429,7 +429,7 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER,
 			},
-                        LastActualStepIndex: -1,
+			LastActualStepIndex: -1,
 		},
 		{
 			WorkflowType:  WORKFLOW_RENEW,
@@ -441,7 +441,7 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER,
 			},
-                        LastActualStepIndex: -1,
+			LastActualStepIndex: -1,
 		},
 		{
 			WorkflowType:  WORKFLOW_RENEW,
@@ -453,7 +453,7 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER,
 			},
-                        LastActualStepIndex: -1,
+			LastActualStepIndex: -1,
 		},
 		{
 			WorkflowType:  WORKFLOW_RETURN,
@@ -463,9 +463,9 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 			ActionDate:    0,
 			NextStepIndex: []int{6},
 			RelatedRoles: []string{
-				MASTER, BORROWER, LIBWORKER, KEEPER,
+				MASTER, BORROWER, LIBWORKER,
 			},
-                        LastActualStepIndex: -1,
+			LastActualStepIndex: -1,
 		},
 		{
 			WorkflowType:  WORKFLOW_RETURN,
@@ -477,7 +477,7 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER, KEEPER,
 			},
-                        LastActualStepIndex: -1,
+			LastActualStepIndex: -1,
 		},
 		{
 			WorkflowType:  WORKFLOW_RETURN,
@@ -489,7 +489,7 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 			RelatedRoles: []string{
 				MASTER, LIBWORKER, KEEPER,
 			},
-                        LastActualStepIndex: -1,
+			LastActualStepIndex: -1,
 		},
 	}
 
@@ -501,7 +501,11 @@ func (p *Plugin) _checkConditions(brk *BorrowRequestKey, bookInfo *bookInfo) err
 	//check if stock is sufficent.
 	if book.BookInventory.Stock <= 0 {
 
-		book.BookPublic.IsAllowedToBorrow = false
+		if book.BookPublic.IsAllowedToBorrow {
+			book.BookPublic.IsAllowedToBorrow = false
+                        book.BookPublic.ReasonOfDisallowed = p.i18n.GetText("no-stock")
+		}
+
 		if err := p._updateBookParts(updateOptions{
 			pub:     book.BookPublic,
 			pubPost: bookInfo.pubPost,

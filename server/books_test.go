@@ -70,21 +70,22 @@ func TestBooks(t *testing.T) {
 	someBooksUpl := Books{
 		{
 			&BookPublic{
-				Id:                "zzh-book-001",
-				Name:              "a test book",
-				NameEn:            "a test book",
-				Category1:         "C1",
-				Category2:         "C2",
-				Category3:         "C3",
-				Author:            "zzh",
-				AuthorEn:          "zzh",
-				Translator:        "eric",
-				TranslatorEn:      "eric",
-				Publisher:         "pub1",
-				PublisherEn:       "pub1En",
-				PublishDate:       "20200821",
-				LibworkerUsers:    []string{"worker1", "worker2"},
-				IsAllowedToBorrow: true,
+				Id:                 "zzh-book-001",
+				Name:               "a test book",
+				NameEn:             "a test book",
+				Category1:          "C1",
+				Category2:          "C2",
+				Category3:          "C3",
+				Author:             "zzh",
+				AuthorEn:           "zzh",
+				Translator:         "eric",
+				TranslatorEn:       "eric",
+				Publisher:          "pub1",
+				PublisherEn:        "pub1En",
+				PublishDate:        "20200821",
+				LibworkerUsers:     []string{"worker1", "worker2"},
+				IsAllowedToBorrow:  true,
+				ManuallyDisallowed: false,
 			},
 			&BookPrivate{
 				KeeperUsers: []string{"kpuser1", "kpuser2"},
@@ -292,6 +293,16 @@ func TestBooks(t *testing.T) {
 
 	mockChannels := initMockChannel()
 
+	// 	findMockChannel := func(postIdType string) *mockChannel {
+	//
+	// 		for _, channel := range mockChannels {
+	// 			if channel.postIdType == postIdType {
+	// 				return &channel
+	// 			}
+	// 		}
+	// 		return nil
+	// 	}
+
 	// findMCByChType := func(chtype string) *mockChannel {
 	// 	for _, ch := range mockChannels {
 	// 		if ch.postIdType == chtype {
@@ -363,15 +374,15 @@ func TestBooks(t *testing.T) {
 			}
 			switch part := booksPartById[id].(type) {
 			case *BookPublic:
-				j, _ := json.MarshalIndent(part,"","  ")
+				j, _ := json.MarshalIndent(part, "", "  ")
 				post.ChannelId = td.BookChIdPub
 				post.Message = string(j)
 			case *BookPrivate:
-				j, _ := json.MarshalIndent(part,"","  ")
+				j, _ := json.MarshalIndent(part, "", "  ")
 				post.ChannelId = td.BookChIdPri
 				post.Message = string(j)
 			case *BookInventory:
-				j, _ := json.MarshalIndent(part,"","  ")
+				j, _ := json.MarshalIndent(part, "", "  ")
 				post.ChannelId = td.BookChIdInv
 				post.Message = string(j)
 			}
@@ -417,6 +428,21 @@ func TestBooks(t *testing.T) {
 				index := findIndexById(post.Id)
 				if !errctrls[index][mockChannelPtr.chid].update {
 					mockChannelPtr.result = append(mockChannelPtr.result, post)
+					switch mockChannelPtr.postIdType {
+					case "pub_id":
+						var pub BookPublic
+						json.Unmarshal([]byte(post.Message), &pub)
+						*someBooksInDB[index].BookPublic = pub
+					case "pri_id":
+						var pri BookPrivate
+						json.Unmarshal([]byte(post.Message), &pri)
+						*someBooksInDB[index].BookPrivate = pri
+					case "inv_id":
+						var inv BookInventory
+						json.Unmarshal([]byte(post.Message), &inv)
+						*someBooksInDB[index].BookInventory = inv
+
+					}
 					return post
 				}
 				return nil
@@ -653,14 +679,20 @@ func TestBooks(t *testing.T) {
 	})
 
 	t.Run("update_normal", func(t *testing.T) {
+
+		someBooksInDB = resetSomeBooksInDB()
 		var theseBooksUpl Books
 		//there is map in, so have to use deepcopy
 		DeepCopy(&theseBooksUpl, &someBooksUpl)
 		theseBooksUpl[0].BookPublic.Author = "new Author"
+		//don't update isAllowedToBorrow when updating
+		theseBooksUpl[0].BookPublic.IsAllowedToBorrow = false
 		theseBooksUpl[0].BookPrivate.KeeperUsers = []string{td.ABook.KeeperUsers[1]}
 		theseBooksUpl[0].BookInventory.Stock = 8
 
 		theseBooksUpl[1].BookPublic.Author = "new Author 2"
+		//don't update isAllowedToBorrow when updating
+		theseBooksUpl[1].BookPublic.IsAllowedToBorrow = false
 		theseBooksUpl[1].BookPrivate.KeeperUsers = []string{td.ABook.KeeperUsers[0]}
 		theseBooksUpl[1].BookInventory.Stock = 6
 
@@ -725,6 +757,9 @@ func TestBooks(t *testing.T) {
 
 			resetMockChannels(mockChannels)
 			someBooksInDB = resetSomeBooksInDB()
+			someBooksInDB[0].BookPublic.IsAllowedToBorrow = false
+			someBooksInDB[1].BookPublic.IsAllowedToBorrow = true
+
 			errctrls = initErrControl()
 
 			plugin.ServeHTTP(nil, w, r)
@@ -764,15 +799,15 @@ func TestBooks(t *testing.T) {
 					case "pub_id":
 						var bookpub *BookPublic
 						json.Unmarshal([]byte(msg), &bookpub)
-						assert.Equalf(t, thisbook.BookPublic, bookpub, "public part")
+						assert.Equalf(t, thisbook.BookPublic, bookpub, "public part %v", i)
 					case "pri_id":
 						var bookpri *BookPrivate
 						json.Unmarshal([]byte(msg), &bookpri)
-						assert.Equalf(t, thisbook.BookPrivate, bookpri, "private part")
+						assert.Equalf(t, thisbook.BookPrivate, bookpri, "private part %v", i)
 					case "inv_id":
 						var bookinv *BookInventory
 						json.Unmarshal([]byte(msg), &bookinv)
-						assert.Equalf(t, thisbook.BookInventory, bookinv, "inventory part")
+						assert.Equalf(t, thisbook.BookInventory, bookinv, "inventory part %v", i)
 					}
 				}
 			}
@@ -781,12 +816,90 @@ func TestBooks(t *testing.T) {
 
 	})
 
+	t.Run("update_borrow_allowed_force", func(t *testing.T) {
+		someBooksInDB = resetSomeBooksInDB()
+		someBooksInDB[0].BookPublic.IsAllowedToBorrow = true
+		someBooksInDB[0].BookPublic.ManuallyDisallowed = false
+		someBooksInDB[1].BookPublic.IsAllowedToBorrow = false
+		someBooksInDB[1].BookPublic.ReasonOfDisallowed = "some reason"
+		someBooksInDB[1].BookPublic.ManuallyDisallowed = true
+
+		resetMockChannels(mockChannels)
+
+		var theseBooksUpl Books
+		DeepCopy(&theseBooksUpl, &someBooksUpl)
+		theseBooksUpl[0].BookPublic.IsAllowedToBorrow = false
+		theseBooksUpl[0].Upload = &Upload{
+			Post_id:              booksPids[0]["pub_id"],
+			UpdIsAllowedToBorrow: true,
+		}
+
+		theseBooksUpl[1].BookPublic.IsAllowedToBorrow = true
+		theseBooksUpl[1].BookPublic.ReasonOfDisallowed = "some reason"
+		theseBooksUpl[1].Upload = &Upload{
+			Post_id:              booksPids[1]["pub_id"],
+			UpdIsAllowedToBorrow: true,
+		}
+
+		var expectBooks Books
+		DeepCopy(&expectBooks, &someBooksInDB)
+		expectBooks[0].BookPublic.IsAllowedToBorrow = false
+		expectBooks[0].BookPublic.ManuallyDisallowed = true
+		expectBooks[1].BookPublic.IsAllowedToBorrow = true
+		expectBooks[1].BookPublic.ReasonOfDisallowed = ""
+		expectBooks[1].BookPublic.ManuallyDisallowed = false
+
+		booksJson, _ := json.Marshal(theseBooksUpl)
+		req := BooksRequest{
+			Action:  BOOKS_ACTION_UPLOAD,
+			ActUser: td.ABook.LibworkerNames[0],
+			Body:    string(booksJson),
+		}
+
+		reqJson, _ := json.Marshal(req)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/books", bytes.NewReader(reqJson))
+
+		errctrls = initErrControl()
+
+		plugin.ServeHTTP(nil, w, r)
+
+		// validate messages
+		_checkBookMessageResult(t, w, false, map[string]BooksMessage{
+			"zzh-book-001": {
+				PostId: booksPids[0]["pub_id"],
+				Status: BOOK_UPLOAD_SUCC,
+			},
+			"zzh-book-002": {
+				PostId: booksPids[1]["pub_id"],
+				Status: BOOK_UPLOAD_SUCC,
+			},
+		})
+
+	NEXTBOOK:
+		for i, thisbook := range expectBooks {
+			for _, mockChannel := range mockChannels {
+				msg := mockChannel.result[i].Message
+
+				switch mockChannel.postIdType {
+				case "pub_id":
+					var bookpub *BookPublic
+					json.Unmarshal([]byte(msg), &bookpub)
+					assert.Equalf(t, thisbook.BookPublic, bookpub, "public part")
+					continue NEXTBOOK
+				default:
+				}
+			}
+		}
+	})
+
 	t.Run("update_pub_only", func(t *testing.T) {
 		var thisBookUpl Book
 		//there is map in, so have to use deepcopy
 		DeepCopy(&thisBookUpl, &someBooksUpl[0])
 
-                thisBookUpl.BookPublic.IsAllowedToBorrow = false
+		thisBookUpl.BookPublic.Author = "New Author"
 
 		thisBookUpl.BookPrivate = nil
 		thisBookUpl.BookInventory = nil
@@ -906,7 +1019,10 @@ func TestBooks(t *testing.T) {
 
 	t.Run("update_rollback", func(t *testing.T) {
 
-		theseBooksUpl := Books{someBooksUpl[0]}
+		var theseBooksUpl Books
+		DeepCopy(&theseBooksUpl, &someBooksUpl)
+
+		theseBooksUpl = Books{theseBooksUpl[0]}
 		theseBooksUpl[0].BookPublic.Author = "new Author"
 		theseBooksUpl[0].BookPrivate.KeeperUsers = []string{td.ABook.KeeperUsers[1]}
 		theseBooksUpl[0].BookInventory.Stock = 10
@@ -1013,6 +1129,71 @@ func TestBooks(t *testing.T) {
 				}
 			}
 		}
+	})
+
+	t.Run("update stock to be avialble", func(t *testing.T) {
+
+		resetMockChannels(mockChannels)
+		errctrls = initErrControl()
+
+		someBooksInDB = resetSomeBooksInDB()
+		someBooksInDB[0].BookPublic.IsAllowedToBorrow = false
+		someBooksInDB[0].BookPublic.ManuallyDisallowed = false
+		someBooksInDB[0].BookInventory.Stock = 0
+		someBooksInDB[0].BookInventory.Lending = 1
+		someBooksInDB[0].BookInventory.TransmitOut = 0
+		someBooksInDB[0].BookInventory.TransmitIn = 0
+
+		someBooksInDB[1].BookPublic.IsAllowedToBorrow = false
+		someBooksInDB[1].BookPublic.ManuallyDisallowed = true
+		someBooksInDB[1].BookInventory.Stock = 0
+		someBooksInDB[1].BookInventory.Lending = 1
+		someBooksInDB[1].BookInventory.TransmitOut = 0
+		someBooksInDB[1].BookInventory.TransmitIn = 0
+
+		var theseBooksUpl Books
+		DeepCopy(&theseBooksUpl, &someBooksUpl)
+		theseBooksUpl[0].BookInventory.Stock = 2
+		theseBooksUpl[0].Upload = &Upload{
+			Post_id: booksPids[0]["pub_id"],
+		}
+		theseBooksUpl[1].BookInventory.Stock = 2
+		theseBooksUpl[1].Upload = &Upload{
+			Post_id: booksPids[1]["pub_id"],
+		}
+
+		var expectBooks Books
+		DeepCopy(&expectBooks, &someBooksInDB)
+		expectBooks[0].BookPublic.IsAllowedToBorrow = true
+		expectBooks[0].BookPublic.ManuallyDisallowed = false
+		expectBooks[0].BookInventory.Stock = 1
+		expectBooks[0].BookInventory.Lending = 1
+
+		expectBooks[1].BookPublic.IsAllowedToBorrow = false
+		expectBooks[1].BookPublic.ManuallyDisallowed = true
+		expectBooks[1].BookInventory.Stock = 1
+		expectBooks[1].BookInventory.Lending = 1
+
+		booksJson, _ := json.Marshal(theseBooksUpl)
+
+		req := BooksRequest{
+			Action:  BOOKS_ACTION_UPLOAD,
+			ActUser: td.ABook.LibworkerNames[0],
+			Body:    string(booksJson),
+		}
+
+		reqJson, _ := json.Marshal(req)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/books", bytes.NewReader(reqJson))
+
+		plugin.ServeHTTP(nil, w, r)
+
+		assert.Equalf(t, expectBooks[0].BookPublic, someBooksInDB[0].BookPublic, "public part")
+		assert.Equalf(t, expectBooks[1].BookPublic, someBooksInDB[1].BookPublic, "public part")
+		assert.Equalf(t, expectBooks[0].BookInventory, someBooksInDB[0].BookInventory, "inventory part")
+		assert.Equalf(t, expectBooks[1].BookInventory, someBooksInDB[1].BookInventory, "inventory part")
+
 	})
 
 	t.Run("delete_normal", func(t *testing.T) {

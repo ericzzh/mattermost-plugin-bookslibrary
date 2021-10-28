@@ -24,6 +24,14 @@
     "footer": "",
     "settings": [
       {
+        "key": "BotDisplayName",
+        "display_name": "Bot Display Name:",
+        "type": "text",
+        "help_text": "Dot display name",
+        "placeholder": "bookslibrary",
+        "default": "bookslibrary"
+      },
+      {
         "key": "TeamName",
         "display_name": "Team Name:",
         "type": "text",

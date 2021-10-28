@@ -62,8 +62,16 @@ type TestData struct {
 	block1             chan struct{}
 	updateBookErr      bool
 }
+type bookInjectOptions struct {
+	keepersAsLibworkers bool
+}
 
-func NewTestData() *TestData {
+func NewTestData(bookInject ...bookInjectOptions) *TestData {
+	var inject bookInjectOptions
+	if bookInject != nil {
+		inject = bookInject[0]
+	}
+
 	_ = fmt.Printf
 	td := &TestData{}
 
@@ -109,11 +117,17 @@ func NewTestData() *TestData {
 		},
 	}
 
+	keeperUsers := []string{"kpuser1", "kpuser2"}
+	keeperNames := []string{"kpname1", "kpname2"}
+	if inject.keepersAsLibworkers {
+		keeperUsers = td.ABookPub.LibworkerUsers
+		keeperNames = td.ABookPub.LibworkerNames
+	}
 	td.ABookPri = &BookPrivate{
 		Id:          "zzh-book-001",
 		Name:        "a test book",
-		KeeperUsers: []string{"kpuser1", "kpuser2"},
-		KeeperNames: []string{"kpname1", "kpname2"},
+		KeeperUsers: keeperUsers,
+		KeeperNames: keeperNames,
 		Relations: Relations{
 			REL_BOOK_PUBLIC: td.BookPostIdPub,
 		},
@@ -148,11 +162,19 @@ func NewTestData() *TestData {
 	td.Worker2Id = model.NewId()
 	td.Keeper1Id = model.NewId()
 	td.Keeper2Id = model.NewId()
+	if inject.keepersAsLibworkers {
+		td.Keeper1Id = td.Worker1Id
+		td.Keeper2Id = td.Worker2Id
+	}
 	td.BorId_botId = model.NewId()
 	td.Worker1Id_botId = model.NewId()
 	td.Worker2Id_botId = model.NewId()
 	td.Keeper1Id_botId = model.NewId()
 	td.Keeper2Id_botId = model.NewId()
+	if inject.keepersAsLibworkers {
+		td.Keeper1Id_botId = td.Worker1Id_botId
+		td.Keeper2Id_botId = td.Worker2Id_botId
+	}
 
 	td.ApiMockCommon = func(options ...mockapiOptons) *plugintest.API {
 		var option mockapiOptons
@@ -416,6 +438,7 @@ func NewTestData() *TestData {
 	}
 
 	td.NewMockPlugin = func() *Plugin {
+		i18n, _ := NewI18n("zh")
 		return &Plugin{
 			botID: td.BotId,
 			booksChannel: &model.Channel{
@@ -436,6 +459,7 @@ func NewTestData() *TestData {
 			borrowTimes:   2,
 			maxRenewTimes: 2,
 			expiredDays:   30,
+			i18n:          i18n,
 		}
 	}
 
