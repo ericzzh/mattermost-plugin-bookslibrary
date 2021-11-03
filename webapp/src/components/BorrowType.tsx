@@ -219,49 +219,6 @@ function BorrowType(props: any) {
         };
     });
 
-    const StyledHeadStatusExpired = styled(Avatar)(() => {
-        const theme = defaultTheme;
-        return {
-            backgroundColor: "red",
-            [theme.breakpoints.up("xs")]: {
-                width: "2.5rem",
-                height: "2.5rem",
-            },
-            [theme.breakpoints.up("sm")]: {
-                width: "2rem",
-                height: "2rem",
-            },
-        };
-    });
-
-    const checkExpire = () => {
-        if (expireDays === -1) {
-            return false;
-        }
-
-        function findStatusAndCheck(status: string) {
-            const step = FindStatusInWorkflow(status, workflow);
-            if (!step?.action_date) {
-                return null;
-            }
-            const action_date = step.action_date;
-            const expiredDate = moment(action_date).add(expireDays, "days");
-            if (moment(Date.now()) > expiredDate) {
-                return true;
-            }
-            return false;
-        }
-
-        const rc = findStatusAndCheck(STATUS_RENEW_CONFIRMED);
-
-        if (rc !== null) return rc;
-
-        const dlv = findStatusAndCheck(STATUS_DELIVIED);
-
-        if (dlv !== null) return dlv;
-
-        return false;
-    };
 
     type distance = {
         active: boolean;
