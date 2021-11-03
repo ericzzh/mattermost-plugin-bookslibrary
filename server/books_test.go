@@ -498,17 +498,21 @@ func TestBooks(t *testing.T) {
 		for i, somebook := range expectBooks {
 			for _, mockChannel := range mockChannels {
 				msg := mockChannel.result[i].Message
+                                postType := mockChannel.result[i].Type
 
 				switch mockChannel.postIdType {
 				case "pub_id":
+                                        assert.Equal(t, "custom_book_type", postType, "post.type should be BookType")
 					bookpub := new(BookPublic)
 					json.Unmarshal([]byte(msg), bookpub)
 					assert.Equalf(t, somebook.BookPublic, bookpub, "public part")
 				case "pri_id":
+                                        assert.Equal(t, "custom_book_private_type", postType, "post.type should be BookPrivateType")
 					bookpri := new(BookPrivate)
 					json.Unmarshal([]byte(msg), bookpri)
 					assert.Equalf(t, somebook.BookPrivate, bookpri, "private part")
 				case "inv_id":
+                                        assert.Equal(t, "custom_book_inventory_type", postType, "post.type should be BookInventoryType")
 					bookinv := new(BookInventory)
 					json.Unmarshal([]byte(msg), bookinv)
 					//initial expection status

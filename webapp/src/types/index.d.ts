@@ -45,6 +45,28 @@ interface Book {
     upd_isAllowedToBorrow: boolean;
 }
 
+interface BookInventory {
+    id_inv: string;
+    name_inv: string;
+    stock: string;
+    transmit_out: string;
+    lending: string;
+    transmit_in: string;
+    relations_inv: {
+        public: string;
+    };
+}
+
+interface BookPrivate {
+    id_pri: string;
+    name_pri: string;
+    keeper_users: string[];
+    keeper_names: string[];
+    relations_pri: {
+        public: string;
+    };
+}
+
 interface BooksRequest {
     action: string;
     act_user: string;

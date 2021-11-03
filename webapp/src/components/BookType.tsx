@@ -1,6 +1,9 @@
 import React from "react";
+import { useHistory } from "react-router-dom";
 import PropTypes from "prop-types";
-import { styled } from "@material-ui/core/styles";
+import styled from "@emotion/styled";
+
+// import {styled}  from "@mui/system";
 // import { makeStyles } from "@material-ui/core/styles";
 import Grid from "@material-ui/core/Grid";
 import Paper from "@material-ui/core/Paper";
@@ -28,7 +31,7 @@ import Chip from "@material-ui/core/Chip";
 import Button from "@material-ui/core/Button";
 import ButtonGroup from "@material-ui/core/ButtonGroup";
 import useMediaQuery from "@material-ui/core/useMediaQuery";
-import { useTheme } from "@material-ui/core/styles";
+import { useTheme, StylesProvider } from "@material-ui/core/styles";
 // import { IntlProvider, FormattedMessage, FormattedNumber } from "react-intl";
 import { GlobalState } from "mattermost-redux/types/store";
 import { Channel } from "mattermost-redux/types/channels";
@@ -72,10 +75,10 @@ function BookType(props: any) {
         getChannel(state, post.channel_id)
     );
     const currentTeam = useSelector(getCurrentTeam);
-    const theme = useTheme();
-    const matchesSm = useMediaQuery(theme.breakpoints.up("sm"));
+    const defaultTheme = useTheme();
+    const matchesSm = useMediaQuery(defaultTheme.breakpoints.up("sm"));
     // const matchesXs = useMediaQuery(theme.breakpoints.up("xs"));
-
+    const history = useHistory();
     //hooks must be placed before parse book JSON
     const [loading, setLoading] = React.useState(false);
     const mutil = useMessageUtils();
@@ -92,14 +95,16 @@ function BookType(props: any) {
     // const [imgSrc, setImgSrc] = React.useState(
     //     `${config.SiteURL}/plugins/${manifest.id}/public/info/${book.id_pub}/cover.jpeg`
     // );
+    //
 
     let book: Book;
 
     try {
         book = JSON.parse(message);
     } catch (error) {
-        const formattedText = messageHtmlToComponent(formatText(message));
-        return <div> {formattedText} </div>;
+        // const formattedText = messageHtmlToComponent(formatText(message));
+        // return <div> {formattedText} </div>;
+        return <div> {message} </div>;
     }
 
     imgSrc.current = `${config.SiteURL}/plugins/${manifest.id}/public/info/${book.id_pub}/cover.jpeg`;
@@ -211,76 +216,82 @@ function BookType(props: any) {
         mutil.checkAndDisplayAsyncMsg();
     };
 
-    const StyledImgWrapper = styled(Grid)(({ theme }) => ({
-        [theme.breakpoints.up("xs")]: {
-            width: 125 * 0.8,
-            height: 160 * 0.8,
-        },
-        [theme.breakpoints.up("sm")]: {
-            width: 125 * 1,
-            height: 160 * 1,
-        },
-        "& img": {
-            maxWidth: "100%",
-            maxHeight: "100%",
-            float: "left",
-        },
-    }));
+    const StyledImgWrapper = styled(Grid)(() => {
+        const theme = defaultTheme;
+        return {
+            [theme.breakpoints.up("xs")]: {
+                width: 125 * 0.8,
+                height: 160 * 0.8,
+            },
+            [theme.breakpoints.up("sm")]: {
+                width: 125 * 1,
+                height: 160 * 1,
+            },
+            "& img": {
+                maxWidth: "100%",
+                maxHeight: "100%",
+                float: "left",
+            },
+        };
+    });
 
-    const StyledBookMainInfo = styled(Grid)(({ theme }) => ({
-        "& .BookBreadcrumb": {
-            "& li": {
+    const StyledBookMainInfo = styled(Grid)(() => {
+        const theme = defaultTheme;
+        return {
+            "& .BookBreadcrumb": {
+                "& li": {
+                    [theme.breakpoints.up("xs")]: {
+                        fontSize: "0.8rem",
+                    },
+                    [theme.breakpoints.up("sm")]: {
+                        fontSize: "1.2rem",
+                    },
+                },
+                "& ol": {
+                    paddingLeft: "0 !important",
+                },
+            },
+            "& .BookName": {
                 [theme.breakpoints.up("xs")]: {
-                    fontSize: "0.8rem",
+                    fontSize: "2rem",
+                    fontWeight: "bold",
                 },
                 [theme.breakpoints.up("sm")]: {
-                    fontSize: "1.2rem",
+                    fontSize: "3rem",
+                    fontWeight: "bold",
                 },
             },
-            "& ol": {
-                paddingLeft: "0 !important",
+            "&  .EnglishName": {
+                [theme.breakpoints.up("xs")]: {
+                    fontSize: "1rem",
+                },
+                [theme.breakpoints.up("sm")]: {
+                    fontSize: "1rem",
+                },
             },
-        },
-        "& .BookName": {
-            [theme.breakpoints.up("xs")]: {
-                fontSize: "1.5rem",
-                fontWeight: "bold",
+            "& .AuthorName": {
+                [theme.breakpoints.up("xs")]: {
+                    fontSize: "1.2rem",
+                    fontWeight: "bold",
+                    marginTop: "0.5rem",
+                },
+                [theme.breakpoints.up("sm")]: {
+                    fontSize: "1.5rem",
+                    fontWeight: "bold",
+                    marginTop: "0.5rem",
+                },
             },
-            [theme.breakpoints.up("sm")]: {
-                fontSize: "3rem",
-                fontWeight: "bold",
+            "& .BookAttribute": {
+                [theme.breakpoints.up("xs")]: {
+                    fontSize: "0.8rem",
+                    marginTop: "-1.5rem",
+                },
+                [theme.breakpoints.up("sm")]: {
+                    fontSize: "1rem",
+                },
             },
-        },
-        "&  .EnglishName": {
-            [theme.breakpoints.up("xs")]: {
-                fontSize: "0.8rem",
-            },
-            [theme.breakpoints.up("sm")]: {
-                fontSize: "1rem",
-            },
-        },
-        "& .AuthorName": {
-            [theme.breakpoints.up("xs")]: {
-                fontSize: "1rem",
-                fontWeight: "bold",
-                marginTop: "0.5rem",
-            },
-            [theme.breakpoints.up("sm")]: {
-                fontSize: "1.5rem",
-                fontWeight: "bold",
-                marginTop: "0.5rem",
-            },
-        },
-        "& .BookAttribute": {
-            [theme.breakpoints.up("xs")]: {
-                fontSize: "0.8rem",
-                marginTop: "-1.5rem",
-            },
-            [theme.breakpoints.up("sm")]: {
-                fontSize: "1rem",
-            },
-        },
-    }));
+        };
+    });
     const bookBreadcrumb = (
         <>
             <Breadcrumbs className={"BookBreadcrumb"}>
@@ -369,10 +380,10 @@ function BookType(props: any) {
     const bookAttribute = (
         <Grid container direction={"column"} spacing={2}>
             <Grid item>{author}</Grid>
-            <Grid item container spacing={2}>
-                <Grid item>{translator}</Grid>
-                <Grid item>{publisher}</Grid>
+            <Grid item container spacing={1}>
                 <Grid item>{pulishDate}</Grid>
+                <Grid item>{publisher}</Grid>
+                <Grid item>{translator}</Grid>
             </Grid>
         </Grid>
     );
@@ -401,27 +412,30 @@ function BookType(props: any) {
         </>
     );
 
-    const StyledBookinfo = styled(Grid)(({ theme }) => ({
-        "& .BookIntro": {
-            [theme.breakpoints.up("xs")]: {
-                fontSize: "1rem",
+    const StyledBookinfo = styled(Grid)(() => {
+        const theme = defaultTheme;
+        return {
+            "& .BookIntro": {
+                [theme.breakpoints.up("xs")]: {
+                    fontSize: "1rem",
+                },
+                [theme.breakpoints.up("sm")]: {
+                    fontSize: "1.5rem",
+                },
             },
-            [theme.breakpoints.up("sm")]: {
-                fontSize: "1.5rem",
+            "& .BookIndex": {
+                [theme.breakpoints.up("xs")]: {
+                    fontSize: "1rem",
+                },
+                [theme.breakpoints.up("sm")]: {
+                    fontSize: "1.5rem",
+                },
             },
-        },
-        "& .BookIndex": {
-            [theme.breakpoints.up("xs")]: {
-                fontSize: "1rem",
+            "& .BookAccordion": {
+                width: "100%",
             },
-            [theme.breakpoints.up("sm")]: {
-                fontSize: "1.5rem",
-            },
-        },
-        "& .BookAccordion": {
-            width: "100%",
-        },
-    }));
+        };
+    });
 
     const bookIndex = (
         <Grid container>
@@ -470,85 +484,110 @@ function BookType(props: any) {
         </StyledBookinfo>
     );
 
-    const StyledBookState = styled(Grid)(({ theme }) => ({
-        "& .BorButton": {
-            width: 50,
-            height: 50,
-        },
-        "& .Libworker": {
-            "& .MuiChip-label": {
+    const StyledBookState = styled(Grid)(() => {
+        const theme = defaultTheme;
+        return {
+            flexWrap: "nowrap",
+            "& .BorButton": {
+                width: 50,
+                height: 50,
+            },
+            "& .Libworker": {
+                "& .MuiChip-label": {
+                    [theme.breakpoints.up("xs")]: {
+                        fontSize: "0.8rem",
+                    },
+                    [theme.breakpoints.up("sm")]: {
+                        fontSize: "1rem",
+                    },
+                },
+                "& .MuiChip-colorPrimary": {
+                    backgroundColor: "green",
+                },
                 [theme.breakpoints.up("xs")]: {
-                    fontSize: "0.8rem",
+                    fontSize: "1rem",
+                    fontWeight: "bold",
                 },
                 [theme.breakpoints.up("sm")]: {
-                    fontSize: "1rem",
+                    fontSize: "1.5rem",
+                    fontWeight: "bold",
                 },
             },
-            "& .MuiChip-colorPrimary": {
-                backgroundColor: "green",
-            },
-            [theme.breakpoints.up("xs")]: {
-                fontSize: "1rem",
-                fontWeight: "bold",
-            },
-            [theme.breakpoints.up("sm")]: {
-                fontSize: "1.5rem",
-                fontWeight: "bold",
-            },
-        },
-    }));
-    const bookState = (
+        };
+    });
+    const handleLibworkerClick = (i: number) => {
+        return () =>
+            history.push(
+                `/${currentTeam.name}/messages/@${book.libworker_users[i]}`
+            );
+    };
+    const borrowSection = (
         <StyledBookState
             container
-            alignItems={"center"}
+            alignItems={"flex-end"}
             spacing={2}
             justifyContent={"flex-end"}
         >
-            {book.libworker_names &&
-                book.libworker_names.map((worker) => (
-                    <>
-                        {
-                            <Grid item className={"Libworker"}>
-                                <Chip
-                                    color="primary"
-                                    size="medium"
-                                    label={worker}
-                                    icon={<WorkerIcon />}
-                                />
-                            </Grid>
-                        }
-                    </>
-                ))}
-            <Grid item xs={12} container justifyContent={"flex-end"}>
-                <Fab
-                    color="primary"
-                    aria-label="borrow"
-                    className={"BorButton"}
-                    onClick={handleBorrow}
-                    disabled={book.isAllowedToBorrow ? false : true}
-                >
-                    <BorrowIcon />
-                </Fab>
+            <Grid item>
+                <Grid container spacing={1} justifyContent={"flex-end"}>
+                    {book.libworker_names &&
+                        book.libworker_names.map((worker, i) => (
+                            <>
+                                {
+                                    <Grid item className={"Libworker"}>
+                                        <Chip
+                                            color="primary"
+                                            size="medium"
+                                            label={worker}
+                                            icon={<WorkerIcon />}
+                                            clickable
+                                            onClick={handleLibworkerClick(i)}
+                                        />
+                                    </Grid>
+                                }
+                            </>
+                        ))}
+                </Grid>
+            </Grid>
+            <Grid item>
+                <Grid container justifyContent={"flex-end"}>
+                    <Fab
+                        color="primary"
+                        aria-label="borrow"
+                        className={"BorButton"}
+                        onClick={handleBorrow}
+                        disabled={book.isAllowedToBorrow ? false : true}
+                    >
+                        <BorrowIcon />
+                    </Fab>
+                </Grid>
             </Grid>
         </StyledBookState>
     );
 
-    const StyledReasonOfDisallowed = styled(Grid)(({ theme }) => ({
-        color: "red",
-        margin: "0rem",
-        [theme.breakpoints.up("xs")]: {
-            fontSize: "1.2rem",
-        },
-        [theme.breakpoints.up("sm")]: {
-            fontSize: "1.5rem",
-        },
-    }));
+    const StyledReasonOfDisallowed = styled(Grid)(() => {
+        const theme = defaultTheme;
+        return {
+            color: "red",
+            marginTop: "1rem",
+            [theme.breakpoints.up("xs")]: {
+                fontSize: "1.2rem",
+            },
+            [theme.breakpoints.up("sm")]: {
+                fontSize: "1.5rem",
+            },
+        };
+    });
 
     const ReasonOfDisallowed = book.reason_of_disallowed && (
-        <StyledReasonOfDisallowed container justifyContent={"flex-end"}>
-            {book.reason_of_disallowed}
+        <StyledReasonOfDisallowed container justifyContent={"flex-end"} alignItems={"flex-end"}>
+            <Grid item>{book.reason_of_disallowed}</Grid>
         </StyledReasonOfDisallowed>
     );
+
+    const StyledBorrowSection = styled(Grid)({
+        height: "100%",
+    });
 
     const main = (
         <Grid container spacing={2}>
@@ -556,14 +595,26 @@ function BookType(props: any) {
                 {bookMain}
             </Grid>
             <Grid item xs={12} sm={4}>
-                <Grid container direction="column" spacing={2}>
+                <StyledBorrowSection
+                    container
+                    direction={"column"}
+                    justifyContent={"flex-end"}
+                >
+                    {/*
+                    //Next Phase
                     <Grid item>{bookInfo}</Grid>
-                    <Grid item>{bookState}</Grid>
-                    {book.reason_of_disallowed && (<Grid item>{ReasonOfDisallowed}</Grid>)}
-                </Grid>
+                    */}
+                    <Grid item>{borrowSection}</Grid>
+                    {book.reason_of_disallowed && (
+                        <Grid item>{ReasonOfDisallowed}</Grid>
+                    )}
+                </StyledBorrowSection>
             </Grid>
         </Grid>
     );
+
+    const handleLinkToBookPartPost = (postId: string) =>
+        history.push(`/${currentTeam.name}/pl/${postId}`);
 
     const buttons = (
         <>
@@ -571,18 +622,28 @@ function BookType(props: any) {
                 <Grid item>
                     <ButtonGroup size="small">
                         <Button
-                            href={`/${currentTeam.name}/pl/${book.relations_pub.inventory}`}
+                            onClick={() =>
+                                handleLinkToBookPartPost(
+                                    book.relations_pub.inventory
+                                )
+                            }
                         >
                             {TEXT["LINK_TO_INV"]}
                         </Button>
                         <Button
-                            href={`/${currentTeam.name}/pl/${book.relations_pub.private}`}
+                            onClick={() =>
+                                handleLinkToBookPartPost(
+                                    book.relations_pub.private
+                                )
+                            }
                         >
                             {TEXT["LINK_TO_PRI"]}
                         </Button>
+                        {/* Next phase
                         <Button>{TEXT["BTN_UPL_PIC_TITLE"]}</Button>
                         <Button>{TEXT["BTN_UPL_INTRO_TITLE"]}</Button>
                         <Button>{TEXT["BTN_UPL_INDEX_TITLE"]}</Button>
+                        */}
                     </ButtonGroup>
                 </Grid>
                 <Grid item>
@@ -599,12 +660,15 @@ function BookType(props: any) {
         </>
     );
 
-    const StyledPaper = styled(Paper)(({ theme }) => ({
-        padding: theme.spacing(2),
-        margin: "auto",
-        maxWidth: "100%",
-        position: "relative",
-    }));
+    const StyledPaper = styled(Paper)(() => {
+        const theme = defaultTheme;
+        return {
+            padding: theme.spacing(2),
+            margin: "auto",
+            maxWidth: "100%",
+            position: "relative",
+        };
+    });
 
     const isLibworker = () => {
         const libworkers = book.libworker_users;
@@ -618,16 +682,16 @@ function BookType(props: any) {
 
     return (
         // <IntlProvider locale="en" defaultLocale="en">
-        <>
+        <StylesProvider injectFirst>
             <StyledPaper>
                 <Grid container direction={"column"} spacing={1}>
                     <Grid item>{main}</Grid>
-                    {isLibworker() && (<Grid item>{buttons}</Grid>)}
+                    {isLibworker() && <Grid item>{buttons}</Grid>}
                 </Grid>
+                {loading && <InProgress open={loading} />}
+                <MsgBox {...mutil.msgBox} close={mutil.onCloseMsg} />
             </StyledPaper>
-            <InProgress open={loading} />
-            <MsgBox {...mutil.msgBox} close={mutil.onCloseMsg} />
-        </>
+        </StylesProvider>
         // </IntlProvider>
     );
 }

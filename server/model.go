@@ -30,9 +30,10 @@ const (
 
 type Relations map[string]string
 type BookPublic struct {
-	Id                 string    `json:"id_pub"`
+	//Make name first so as to show the JSON's name in changed thread view
 	Name               string    `json:"name_pub"`
 	NameEn             string    `json:"name_en"`
+	Id                 string    `json:"id_pub"`
 	Category1          string    `json:"category1"`
 	Category2          string    `json:"category2"`
 	Category3          string    `json:"category3"`
@@ -48,23 +49,23 @@ type BookPublic struct {
 	LibworkerUsers     []string  `json:"libworker_users"`
 	LibworkerNames     []string  `json:"libworker_names,omitempty"`
 	IsAllowedToBorrow  bool      `json:"isAllowedToBorrow"`
-        ReasonOfDisallowed string    `json:"reason_of_disallowed"`
+	ReasonOfDisallowed string    `json:"reason_of_disallowed"`
 	ManuallyDisallowed bool      `json:"manually_disallowed"`
 	Tags               []string  `json:"tags,omitempty"`
 	Relations          Relations `json:"relations_pub,omitempty"`
 }
 
 type BookPrivate struct {
-	Id          string    `json:"id_pri,omitempty"`
 	Name        string    `json:"name_pri,omitempty"`
+	Id          string    `json:"id_pri,omitempty"`
 	KeeperUsers []string  `json:"keeper_users"`
 	KeeperNames []string  `json:"keeper_names,omitempty"`
 	Relations   Relations `json:"relations_pri,omitempty"`
 }
 
 type BookInventory struct {
-	Id          string    `json:"id_inv,omitempty"`
 	Name        string    `json:"name_inv,omitempty"`
+	Id          string    `json:"id_inv,omitempty"`
 	Stock       int       `json:"stock"`
 	TransmitOut int       `json:"transmit_out"`
 	Lending     int       `json:"lending"`
@@ -146,10 +147,11 @@ type Step struct {
 }
 
 type BorrowRequest struct {
-	BookPostId    string   `json:"book_post_id"`
-	BookId        string   `json:"book_id"`
+	//Make name first so as to show the JSON's name in changed thread view
 	BookName      string   `json:"book_name"`
 	Author        string   `json:"author"`
+	BookPostId    string   `json:"book_post_id"`
+	BookId        string   `json:"book_id"`
 	BorrowerUser  string   `json:"borrower_user"`
 	BorrowerName  string   `json:"borrower_name"`
 	LibworkerUser string   `json:"libworker_user"`

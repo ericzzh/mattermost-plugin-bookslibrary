@@ -503,7 +503,7 @@ func (p *Plugin) _checkConditions(brk *BorrowRequestKey, bookInfo *bookInfo) err
 
 		if book.BookPublic.IsAllowedToBorrow {
 			book.BookPublic.IsAllowedToBorrow = false
-                        book.BookPublic.ReasonOfDisallowed = p.i18n.GetText("no-stock")
+			book.BookPublic.ReasonOfDisallowed = p.i18n.GetText("no-stock")
 		}
 
 		if err := p._updateBookParts(updateOptions{
@@ -520,16 +520,16 @@ func (p *Plugin) _checkConditions(brk *BorrowRequestKey, bookInfo *bookInfo) err
 	//check if max borrowing concurrent limit is obeyed
 	posts, err := p.API.SearchPostsInTeam(p.team.Id, []*model.SearchParams{
 		{
-			Terms:     "BORROWER_EQ_" + brk.BorrowerUser,
+			Terms:     TAG_PREFIX_BORROWER + brk.BorrowerUser,
 			IsHashtag: true,
 			InChannels: []string{
-				p.borrowChannel.Id,
+				p.borrowChannel.Name,
 			},
 		},
 	})
 
 	if err != nil {
-		errors.Wrapf(err, "search posts error.")
+		return errors.Wrapf(err, "search posts error.")
 	}
 
 	count := 0

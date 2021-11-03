@@ -32,7 +32,6 @@ const config = {
                 isTSX: true,
             },
         ],
-        ["@emotion/babel-preset-css-prop"],
     ],
     plugins: [
         "@babel/plugin-proposal-class-properties",

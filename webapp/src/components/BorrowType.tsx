@@ -1,4 +1,5 @@
 import React from "react";
+import { useHistory } from "react-router-dom";
 import PropTypes from "prop-types";
 import Grid from "@material-ui/core/Grid";
 import Paper from "@material-ui/core/Paper";
@@ -8,8 +9,9 @@ import AlarmOnIcon from "@material-ui/icons/AlarmOn";
 import Button from "@material-ui/core/Button";
 import IconButton from "@material-ui/core/IconButton";
 import DeleteIcon from "@material-ui/icons/Delete";
-import { makeStyles, withStyles, styled } from "@material-ui/core/styles";
-// import { getCurrentTeam } from "mattermost-redux/selectors/entities/teams";
+import { StylesProvider } from "@material-ui/core/styles";
+import styled from "@emotion/styled";
+import { getCurrentTeam } from "mattermost-redux/selectors/entities/teams";
 import { useSelector } from "react-redux";
 import WorkerIcon from "@material-ui/icons/PermContactCalendar";
 import BorrowIcon from "@material-ui/icons/MenuBook";
@@ -45,6 +47,8 @@ import { Client4 } from "mattermost-redux/client";
 import InProgress from "./InProgress";
 import MsgBox, { MsgBoxProps, useMessageUtils } from "./MsgBox";
 import Image from "./Image";
+import BookIcon from "@material-ui/icons/Book";
+import { Template } from "../utils";
 
 const STATUS_REQUESTED = "R";
 const STATUS_CONFIRMED = "C";
@@ -59,7 +63,7 @@ const WORKFLOW_BORROW = "BORROW";
 const WORKFLOW_RENEW = "RENEW";
 const WORKFLOW_RETURN = "RETURN";
 
-const { formatText, messageHtmlToComponent } = window.PostUtils;
+// const { formatText, messageHtmlToComponent } = window.PostUtils;
 
 const TEXT: Record<string, string> = {
     ["WF_" + WORKFLOW_BORROW]: "借书流程",
@@ -91,16 +95,13 @@ const TEXT: Record<string, string> = {
     WORKFLOW_SUCC: "请求成功",
     LOAD_CONFIG_ERROR: "加载配置数据失败。错误：",
     REJECT: "拒绝",
+    DISTANCE_TO_RETRUN: "距还书还有%v天",
+    DISTANCE_AFTER_RETRUN: "已超还书日%v天",
 };
 
 function FindStatusInWorkflow(status: string, workflow: Step[]) {
     return workflow.find((step) => step.status === status);
 }
-
-type asyncMsg = {
-    msgBox: MsgBoxProps;
-    wait: number;
-};
 
 function BorrowType(props: any) {
     const post = { ...props.post };
@@ -112,9 +113,15 @@ function BorrowType(props: any) {
     //Current user
     const currentUser = useSelector(getCurrentUser);
 
+    //Current Team
+    const currentTeam = useSelector(getCurrentTeam);
+
+    //history
+    const history = useHistory();
+
     //Theme
-    const theme = useTheme();
-    const matchesSm = useMediaQuery(theme.breakpoints.up("sm"));
+    const defaultTheme = useTheme();
+    const matchesSm = useMediaQuery(defaultTheme.breakpoints.up("sm"));
 
     //Fetching plugin config
     const expireDays = useSelector(getExpireDays);
@@ -183,8 +190,9 @@ function BorrowType(props: any) {
         workflow = borrow.dataOrImage.workflow;
         currentStep = borrowReq.workflow[borrowReq.step_index];
     } catch (error) {
-        const formattedText = messageHtmlToComponent(formatText(message));
-        return <div> {formattedText} </div>;
+        // const formattedText = messageHtmlToComponent(formatText(message));
+        // return <div> {formattedText} </div>;
+        return <div> {message} </div>;
     }
 
     imgSrc.current = `${config.SiteURL}/plugins/${manifest.id}/public/info/${borrowReq.book_id}/cover.jpeg`;
@@ -192,33 +200,39 @@ function BorrowType(props: any) {
 
     /*************** Rendering start *************************/
 
-    const StyledImgWrapper = styled(Grid)(({ theme }) => ({
-        [theme.breakpoints.up("xs")]: {
-            width: 125 * 0.8,
-            height: 160 * 0.8,
-        },
-        [theme.breakpoints.up("sm")]: {
-            width: 125 * 1.5,
-            height: 160 * 1.5,
-        },
-        "& img": {
-            maxWidth: "100%",
-            maxHeight: "100%",
-            float: "left",
-        },
-    }));
+    const StyledImgWrapper = styled(Grid)(() => {
+        const theme = defaultTheme;
+        return {
+            [theme.breakpoints.up("xs")]: {
+                width: 125 * 0.8,
+                height: 160 * 0.8,
+            },
+            [theme.breakpoints.up("sm")]: {
+                width: 125 * 1.5,
+                height: 160 * 1.5,
+            },
+            "& img": {
+                maxWidth: "100%",
+                maxHeight: "100%",
+                float: "left",
+            },
+        };
+    });
 
-    const StyledHeadStatusExpired = styled(Avatar)(({ theme }) => ({
-        backgroundColor: "red",
-        [theme.breakpoints.up("xs")]: {
-            width: "2.5rem",
-            height: "2.5rem",
-        },
-        [theme.breakpoints.up("sm")]: {
-            width: "2rem",
-            height: "2rem",
-        },
-    }));
+    const StyledHeadStatusExpired = styled(Avatar)(() => {
+        const theme = defaultTheme;
+        return {
+            backgroundColor: "red",
+            [theme.breakpoints.up("xs")]: {
+                width: "2.5rem",
+                height: "2.5rem",
+            },
+            [theme.breakpoints.up("sm")]: {
+                width: "2rem",
+                height: "2rem",
+            },
+        };
+    });
 
     const checkExpire = () => {
         if (expireDays === -1) {
@@ -249,16 +263,109 @@ function BorrowType(props: any) {
         return false;
     };
 
+    type distance = {
+        active: boolean;
+        days?: number;
+        message?: string;
+        color?: string;
+        fontColor?: string;
+    };
+
+    const computeDistance: () => distance = () => {
+        if (expireDays === -1) {
+            return {
+                active: false,
+            };
+        }
+
+        if (currentStep.status === STATUS_RETURNED) {
+            return {
+                active: false,
+            };
+        }
+
+        function computeByStatus(status: string) {
+            const step = FindStatusInWorkflow(status, workflow);
+            if (!step?.action_date) {
+                return null;
+            }
+            const action_date = step.action_date;
+            const expiredDate = moment(action_date).add(expireDays, "days");
+            const days = expiredDate.diff(moment(Date.now()), "days");
+            if (days < 0) {
+                return {
+                    active: true,
+                    days: days,
+                    message: Template(TEXT["DISTANCE_AFTER_RETRUN"], [
+                        Math.abs(days),
+                    ]),
+                    color: "red",
+                    fontColor: "white",
+                };
+            }
+
+            if (days < 7) {
+                return {
+                    active: true,
+                    days: days,
+                    message: Template(TEXT["DISTANCE_TO_RETRUN"], [
+                        Math.abs(days),
+                    ]),
+                    color: "yellow",
+                    fontColor: "black",
+                };
+            }
+
+            return {
+                active: true,
+                days: days,
+                message: Template(TEXT["DISTANCE_TO_RETRUN"], [Math.abs(days)]),
+                color: "yellowgreen",
+                fontColor: "black",
+            };
+        }
+
+        const rc = computeByStatus(STATUS_RENEW_CONFIRMED);
+
+        if (rc !== null) return rc;
+
+        const dlv = computeByStatus(STATUS_DELIVIED);
+
+        if (dlv !== null) return dlv;
+
+        return {
+            active: false,
+        };
+    };
+
+    const distance = computeDistance();
+
+    const StyledHeadStatus = styled(Grid)(() => {
+        const theme = defaultTheme;
+
+        return {
+            "& .Distance": {
+                background: distance.color,
+                color: distance.fontColor,
+            },
+        };
+    });
+
+    const distanceStatus = distance.active && (
+        <Chip
+            size={"small"}
+            // variant={"outlined"}
+            icon={<AlarmOnIcon />}
+            label={distance.message}
+            color={"primary"}
+            className={"Distance"}
+        />
+    );
+
     const headStatus = (
-        <Grid container>
-            <Grid item>
-                {checkExpire() && (
-                    <StyledHeadStatusExpired>
-                        <AlarmOnIcon />
-                    </StyledHeadStatusExpired>
-                )}
-            </Grid>
-        </Grid>
+        <StyledHeadStatus container>
+            <Grid item>{distanceStatus}</Grid>
+        </StyledHeadStatus>
     );
 
     const canDelete = () => {
@@ -347,65 +454,74 @@ function BorrowType(props: any) {
     //     {"转到图书"}
     // </Link>
 
-    const BookInfo = styled(Grid)(({ theme }) => ({
-        "& .BookInfo": {
-            [theme.breakpoints.up("xs")]: {
-                marginBottom: "1rem",
-            },
-            [theme.breakpoints.up("sm")]: {
-                marginBottom: "1.5rem",
-            },
-        },
-        "& .BookName": {
-            [theme.breakpoints.up("xs")]: {
-                fontSize: "1.5rem",
-                fontWeight: "bold",
-                marginBottom: "1rem",
-            },
-            [theme.breakpoints.up("sm")]: {
-                fontSize: "3rem",
-                fontWeight: "bold",
-                marginBottom: "2rem",
-            },
-        },
-        "& .AuthorName": {
-            [theme.breakpoints.up("xs")]: {
-                fontSize: "1rem",
-                fontWeight: "bold",
-            },
-            [theme.breakpoints.up("sm")]: {
-                fontSize: "1.5rem",
-                fontWeight: "bold",
-            },
-        },
-        "& .Paticipant": {
-            [theme.breakpoints.up("xs")]: {
-                marginBottom: "1rem",
-            },
-            [theme.breakpoints.up("sm")]: {
-                marginBottom: "4rem",
-            },
-
-            "& .PaticipantCommon": {
+    const BookInfo = styled(Grid)(() => {
+        const theme = defaultTheme;
+        return {
+            "& .BookInfo": {
                 [theme.breakpoints.up("xs")]: {
-                    fontSize: "0.8rem",
+                    marginBottom: "1rem",
                 },
                 [theme.breakpoints.up("sm")]: {
-                    fontSize: "0.8rem",
+                    marginBottom: "1.5rem",
                 },
             },
+            "& .BookName": {
+                [theme.breakpoints.up("xs")]: {
+                    fontSize: "2rem",
+                    fontWeight: "bold",
+                    // marginBottom: "1rem",
+                },
+                [theme.breakpoints.up("sm")]: {
+                    fontSize: "3rem",
+                    fontWeight: "bold",
+                    // marginBottom: "2rem",
+                },
+            },
+            "& .AuthorName": {
+                [theme.breakpoints.up("xs")]: {
+                    fontSize: "1.2rem",
+                    fontWeight: "bold",
+                    marginTop: "0.5rem",
+                },
+                [theme.breakpoints.up("sm")]: {
+                    fontSize: "1.5rem",
+                    fontWeight: "bold",
+                    marginTop: "0.5rem",
+                },
+            },
+            "& .Paticipant": {
+                // [theme.breakpoints.up("xs")]: {
+                //     marginBottom: "1rem",
+                // },
+                // [theme.breakpoints.up("sm")]: {
+                //     marginBottom: "4rem",
+                // },
 
-            "& .PaticipantBorrower": {
-                backgroundColor: "purple",
+                "& .PaticipantCommon": {
+                    [theme.breakpoints.up("xs")]: {
+                        fontSize: "0.8rem",
+                    },
+                    [theme.breakpoints.up("sm")]: {
+                        fontSize: "0.8rem",
+                    },
+                },
+
+                "& .PaticipantBorrower": {
+                    backgroundColor: "purple",
+                },
+                "& .PaticipantLibworker": {
+                    backgroundColor: "green",
+                },
+                "& .PaticipantKeeper": {
+                    backgroundColor: "teal",
+                },
             },
-            "& .PaticipantLibworker": {
-                backgroundColor: "green",
-            },
-            "& .PaticipantKeeper": {
-                backgroundColor: "teal",
-            },
-        },
-    }));
+        };
+    });
+
+    const handleRoleUserClick = (userName: string) => {
+        return () => history.push(`/${currentTeam.name}/messages/@${userName}`);
+    };
 
     const participants = (
         <Grid container spacing={1}>
@@ -418,6 +534,10 @@ function BorrowType(props: any) {
                         color="primary"
                         label={borrow.dataOrImage.borrower_name}
                         className={"PaticipantCommon PaticipantBorrower"}
+                        clickable
+                        onClick={handleRoleUserClick(
+                            borrow.dataOrImage.borrower_user
+                        )}
                     />
                 )}
             </Grid>
@@ -429,10 +549,14 @@ function BorrowType(props: any) {
                     color="primary"
                     label={borrow.dataOrImage.libworker_name}
                     className={"PaticipantCommon PaticipantLibworker"}
+                    clickable
+                    onClick={handleRoleUserClick(
+                        borrow.dataOrImage.libworker_user
+                    )}
                 />
             </Grid>
             <Grid item>
-                {borrow.dataOrImage.keeper_names?.map((keeper_name) => (
+                {borrow.dataOrImage.keeper_names?.map((keeper_name, i) => (
                     <Chip
                         size={"medium"}
                         // variant={"outlined"}
@@ -440,16 +564,31 @@ function BorrowType(props: any) {
                         color="primary"
                         label={keeper_name}
                         className={"PaticipantCommon PaticipantKeeper"}
+                        clickable
+                        onClick={handleRoleUserClick(
+                            borrow.dataOrImage.keeper_users[i]
+                        )}
                     />
                 ))}
             </Grid>
         </Grid>
     );
 
+    const handleLinkToBook = () =>
+        history.push(
+            `/${currentTeam.name}/pl/${borrow.dataOrImage.book_post_id}`
+        );
     const requestInfo = (
         <BookInfo container direction="column">
             <Grid item className={"BookInfo"}>
-                <div className={"BookName"}>{borrow.dataOrImage.book_name}</div>
+                <div className={"BookName"}>
+                    {borrow.dataOrImage.book_name}
+                    {
+                        <IconButton onClick={handleLinkToBook}>
+                            <BookIcon />
+                        </IconButton>
+                    }
+                </div>
                 <div className={"AuthorName"}>{borrow.dataOrImage.author}</div>
             </Grid>
             <Grid item className={"Paticipant"}>
@@ -458,12 +597,15 @@ function BorrowType(props: any) {
         </BookInfo>
     );
 
-    const StyledDateAccordion = styled(Accordion)(({ theme }) => ({
-        width: "100%",
-        "& .MuiAccordionSummary-root": {
-            fontSize: "1.2rem",
-        },
-    }));
+    const StyledDateAccordion = styled(Accordion)(() => {
+        const theme = defaultTheme;
+        return {
+            width: "100%",
+            "& .MuiAccordionSummary-root": {
+                fontSize: "1.2rem",
+            },
+        };
+    });
 
     type wfCallBack = (s: Step, i: number) => boolean;
 
@@ -505,16 +647,19 @@ function BorrowType(props: any) {
     };
 
     const addDates = () => {
-        const DateField = styled(TextField)(({ theme }) => ({
-            "& label,input": {
-                [theme.breakpoints.up("xs")]: {
-                    fontSize: "1rem",
+        const DateField = styled(TextField)(() => {
+            const theme = defaultTheme;
+            return {
+                "& label,input": {
+                    [theme.breakpoints.up("xs")]: {
+                        fontSize: "1rem",
+                    },
+                    [theme.breakpoints.up("sm")]: {
+                        fontSize: "1.5rem",
+                    },
                 },
-                [theme.breakpoints.up("sm")]: {
-                    fontSize: "1.5rem",
-                },
-            },
-        }));
+            };
+        });
 
         let actionDates: React.ReactElement[] = [];
 
@@ -559,23 +704,27 @@ function BorrowType(props: any) {
         </Grid>
     );
 
-    const StyledWFStepper = styled(Stepper)(({ theme }) => ({
-        "& svg": {
-            fontSize: "2rem",
-        },
-        "& .MuiStepLabel-label": {
-            fontSize: "1.2rem",
-        },
-    }));
+    const StyledWFStepper = styled(Stepper)(() => {
+        return {
+            "& svg": {
+                fontSize: "2rem",
+            },
+            "& .MuiStepLabel-label": {
+                fontSize: "1.2rem",
+            },
+        };
+    });
 
-    const StyledWFButton = styled(Button)(({ theme }) => ({
-        marginLeft: 10,
-        marginTop: 10,
-        width: "10rem",
-        alignSelf: "flex-end",
-    }));
+    const StyledWFButton = styled(Button)(() => {
+        return {
+            marginLeft: 10,
+            marginTop: 10,
+            width: "10rem",
+            alignSelf: "flex-end",
+        };
+    });
 
-    const StyledWFTypeChip = styled(Chip)(({ theme }) => ({
+    const StyledWFTypeChip = styled(Chip)(() => ({
         width: "30%",
         height: "2rem",
         marginTop: "1.5rem",
@@ -607,16 +756,17 @@ function BorrowType(props: any) {
     // background-image: radial-gradient( circle farthest-corner at 10% 20%,  rgba(14,174,87,1) 0%, rgba(12,116,117,1) 90% );
     const graidentColor =
         "radial-gradient( circle farthest-corner at 10% 20%,  rgba(14,174,87,1) 0%, rgba(12,116,117,1) 90% )";
-    const ColorlibConnector = withStyles({
-        alternativeLabel: {
+
+    const ColorlibConnector = styled(StepConnector)(() => ({
+        "&.MuiStepConnector-alternativeLabel": {
             top: 22,
         },
-        active: {
+        "&.MuiStepConnector-active": {
             "& $line": {
                 backgroundImage: graidentColor,
             },
         },
-        completed: {
+        "&.MuiStepConnector-completed": {
             "& $line": {
                 backgroundImage: graidentColor,
             },
@@ -627,10 +777,31 @@ function BorrowType(props: any) {
             backgroundColor: "#eaeaf0",
             borderRadius: 1,
         },
-    })(StepConnector);
+    }));
 
-    const useColorlibStepIconStyles = makeStyles({
-        root: {
+    // const useColorlibStepIconStyles = makeStyles({
+    //     root: {
+    //         backgroundColor: "#ccc",
+    //         zIndex: 1,
+    //         color: "#fff",
+    //         width: 50,
+    //         height: 50,
+    //         display: "flex",
+    //         borderRadius: "50%",
+    //         justifyContent: "center",
+    //         alignItems: "center",
+    //     },
+    //     active: {
+    //         backgroundImage: graidentColor,
+    //         boxShadow: "0 4px 10px 0 rgba(0,0,0,.25)",
+    //     },
+    //     completed: {
+    //         backgroundImage: graidentColor,
+    //     },
+    // });
+
+    const StyledColorLibStepIcon = styled("div")(() => ({
+        "&.ColorlibStepIcon-root": {
             backgroundColor: "#ccc",
             zIndex: 1,
             color: "#fff",
@@ -641,19 +812,19 @@ function BorrowType(props: any) {
             justifyContent: "center",
             alignItems: "center",
         },
-        active: {
+        "&.ColorlibStepIcon-active": {
             backgroundImage: graidentColor,
             boxShadow: "0 4px 10px 0 rgba(0,0,0,.25)",
         },
-        completed: {
+        "&.ColorlibStepIcon-completed": {
             backgroundImage: graidentColor,
         },
-    });
+    }));
 
     //Icon shows the actor who has executed this activity,
     //this is conceptly differenct from the meaning of ActRole in Step, which means who WILL execute next activity
     function ColorlibStepIcon(props: StepIconProps) {
-        const classes = useColorlibStepIconStyles();
+        // const classes = useColorlibStepIconStyles();
         const { active, completed } = props;
 
         let icons: { [index: string]: React.ReactElement } = {};
@@ -684,15 +855,25 @@ function BorrowType(props: any) {
             icons[iconIndex] = icon;
         });
 
+        // return (
+        //     <div
+        //         className={clsx(classes.root, {
+        //             [classes.active]: active,
+        //             [classes.completed]: completed,
+        //         })}
+        //     >
+        //         {icons[String(props.icon)]}
+        //     </div>
+        // );
         return (
-            <div
-                className={clsx(classes.root, {
-                    [classes.active]: active,
-                    [classes.completed]: completed,
+            <StyledColorLibStepIcon
+                className={clsx("ColorlibStepIcon-root", {
+                    ["ColorlibStepIcon-active"]: active,
+                    ["ColorlibStepIcon-completed"]: completed,
                 })}
             >
                 {icons[String(props.icon)]}
-            </div>
+            </StyledColorLibStepIcon>
         );
     }
     const handleStep = async (nextStepIndex: number, backward: boolean) => {
@@ -869,24 +1050,27 @@ function BorrowType(props: any) {
         </Grid>
     );
 
-    const StyledPaper = styled(Paper)(({ theme }) => ({
-        padding: theme.spacing(2),
-        margin: "auto",
-        maxWidth: "100%",
-        position: "relative",
-    }));
+    const StyledPaper = styled(Paper)(() => {
+        const theme = defaultTheme;
+        return {
+            padding: theme.spacing(2),
+            margin: "auto",
+            maxWidth: "100%",
+            position: "relative",
+        };
+    });
 
     return (
-        <>
+        <StylesProvider injectFirst>
             <StyledPaper>
                 <Grid container direction={"column"}>
                     <Grid item>{titleBar}</Grid>
                     <Grid item>{main}</Grid>
                 </Grid>
             </StyledPaper>
-            <InProgress open={loading} />
+            {loading && <InProgress open={loading} />}
             <MsgBox {...mutil.msgBox} close={mutil.onCloseMsg} />
-        </>
+        </StylesProvider>
     );
 }
 

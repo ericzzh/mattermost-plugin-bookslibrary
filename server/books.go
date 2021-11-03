@@ -596,6 +596,7 @@ func (p *Plugin) _createABook(book *Book) (string, error) {
 	postPri, appErr := p.API.CreatePost(
 		&model.Post{
 			UserId:    p.botID,
+			Type:      "custom_book_private_type",
 			ChannelId: p.booksPriChannel.Id,
 			Message:   "",
 		},
@@ -612,6 +613,7 @@ func (p *Plugin) _createABook(book *Book) (string, error) {
 	postInv, appErr := p.API.CreatePost(
 		&model.Post{
 			UserId:    p.botID,
+			Type:      "custom_book_inventory_type",
 			ChannelId: p.booksInvChannel.Id,
 			Message:   "",
 		},

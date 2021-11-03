@@ -1116,7 +1116,7 @@ func TestInvFlow(t *testing.T) {
 		var pub BookPublic
 		json.Unmarshal([]byte(postPub.Message), &pub)
 		assert.Equalf(t, false, pub.IsAllowedToBorrow, "should be unavailable")
-                assert.Equalf(t, "无库存", pub.ReasonOfDisallowed, "should be text of no-stock")
+		assert.Equalf(t, "无库存", pub.ReasonOfDisallowed, "should be text of no-stock")
 
 		td.ABookPub.IsAllowedToBorrow = false
 
@@ -1140,7 +1140,7 @@ func TestInvFlow(t *testing.T) {
 		postPub = env.td.RealBookPostUpd[td.BookChIdPub]
 		json.Unmarshal([]byte(postPub.Message), &pub)
 		assert.Equalf(t, true, pub.IsAllowedToBorrow, "should be available")
-                assert.Equalf(t, "", pub.ReasonOfDisallowed, "should be cleared")
+		assert.Equalf(t, "", pub.ReasonOfDisallowed, "should be cleared")
 
 	})
 
@@ -1339,11 +1339,11 @@ func TestRevert(t *testing.T) {
 
 			if step.result.inv.Stock == 0 {
 				assert.Equalf(t, false, env.td.ABookPub.IsAllowedToBorrow, "should not be allowed to borrow")
-                                assert.Equalf(t, "无库存",env.td.ABookPub.ReasonOfDisallowed, "should be text of no-stock")
-                                
+				assert.Equalf(t, "无库存", env.td.ABookPub.ReasonOfDisallowed, "should be text of no-stock")
+
 			} else {
 				assert.Equalf(t, true, env.td.ABookPub.IsAllowedToBorrow, "should be allowed to borrow")
-                                assert.Equalf(t, "",env.td.ABookPub.ReasonOfDisallowed, "should be cleared")
+				assert.Equalf(t, "", env.td.ABookPub.ReasonOfDisallowed, "should be cleared")
 			}
 
 			//Renew times check
@@ -1380,8 +1380,8 @@ func TestRevert(t *testing.T) {
 			env.plugin.ServeHTTP(nil, w, r)
 		}
 
-                env.td.ABookPub.IsAllowedToBorrow = false
-                env.td.ABookPub.ManuallyDisallowed = true
+		env.td.ABookPub.IsAllowedToBorrow = false
+		env.td.ABookPub.ManuallyDisallowed = true
 
 		for _, status := range []string{
 			STATUS_REQUESTED,
@@ -1728,10 +1728,10 @@ func TestBorrowRestrict(t *testing.T) {
 				return func() {
 					api.On("SearchPostsInTeam", plugin.team.Id, []*model.SearchParams{
 						{
-							Terms:     "BORROWER_EQ_" + td.BorrowUser,
+							Terms:     TAG_PREFIX_BORROWER + td.BorrowUser,
 							IsHashtag: true,
 							InChannels: []string{
-								plugin.borrowChannel.Id,
+								plugin.borrowChannel.Name,
 							},
 						},
 					}).Return(searched, nil)
@@ -1771,10 +1771,10 @@ func TestBorrowRestrict(t *testing.T) {
 				return func() {
 					api.On("SearchPostsInTeam", plugin.team.Id, []*model.SearchParams{
 						{
-							Terms:     "BORROWER_EQ_" + td.BorrowUser,
+							Terms:     TAG_PREFIX_BORROWER + td.BorrowUser,
 							IsHashtag: true,
 							InChannels: []string{
-								plugin.borrowChannel.Id,
+								plugin.borrowChannel.Name,
 							},
 						},
 					}).Return(searched, nil)
@@ -2189,14 +2189,14 @@ func TestBorrowDelete(t *testing.T) {
 		performNext(env.workflowEnv, STATUS_CONFIRMED, false)
 		inv := getInv(env.workflowEnv)
 		assert.Equalf(t, 0, inv.Stock, "stock")
-                assert.Equalf(t, "无库存", env.td.ABookPub.ReasonOfDisallowed, "reason should be set")
+		assert.Equalf(t, "无库存", env.td.ABookPub.ReasonOfDisallowed, "reason should be set")
 		assert.Equalf(t, 1, inv.TransmitOut, "stock")
 		performDelete(env.workflowEnv, false)
 		inv = getInv(env.workflowEnv)
 		assert.Equalf(t, 1, inv.Stock, "stock")
 		assert.Equalf(t, 0, inv.TransmitOut, "stock")
 		assert.Equalf(t, true, env.td.ABookPub.IsAllowedToBorrow, "stock should be available")
-                assert.Equalf(t, "", env.td.ABookPub.ReasonOfDisallowed, "reason should be cleared")
+		assert.Equalf(t, "", env.td.ABookPub.ReasonOfDisallowed, "reason should be cleared")
 	})
 
 	t.Run("delete, not toggling", func(t *testing.T) {
@@ -2208,8 +2208,8 @@ func TestBorrowDelete(t *testing.T) {
 			Lending:     0,
 			TransmitIn:  0,
 		}
-                env.td.ABookPub.IsAllowedToBorrow = false
-                env.td.ABookPub.ManuallyDisallowed = true
+		env.td.ABookPub.IsAllowedToBorrow = false
+		env.td.ABookPub.ManuallyDisallowed = true
 		performNext(env.workflowEnv, STATUS_CONFIRMED, false)
 		performDelete(env.workflowEnv, false)
 		assert.Equalf(t, false, env.td.ABookPub.IsAllowedToBorrow, "stock should be still not available")
