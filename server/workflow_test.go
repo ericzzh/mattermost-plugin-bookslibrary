@@ -200,7 +200,7 @@ func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
 	return &env
 }
 
-func TestHandleWorkflow(t *testing.T) {
+func TestWorkflowHandle(t *testing.T) {
 	logSwitch = true
 	_ = fmt.Println
 
@@ -323,6 +323,90 @@ func TestHandleWorkflow(t *testing.T) {
 						},
 					},
 				},
+			}, {
+				WorkflowRequest{
+					MasterPostKey: createdPid[td.BorChannelId],
+					ActorUser:     td.ABook.KeeperUsers[0],
+					NextStepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+				},
+				[]testResult{
+					{
+						role:                MASTER,
+						chid:                td.BorChannelId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+						brq: BorrowRequest{
+							StepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							Tags: []string{
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_KEEPER_CONFIRMED,
+							},
+						},
+					},
+					{
+						role:                BORROWER,
+						chid:                td.BorId_botId,
+						notifiy:             false,
+						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+						brq: BorrowRequest{
+							StepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							Tags: []string{
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_STATUS + STATUS_KEEPER_CONFIRMED,
+							},
+						},
+					},
+					{
+						role:                LIBWORKER,
+						chid:                worker_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+						brq: BorrowRequest{
+							StepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							Tags: []string{
+								TAG_PREFIX_BORROWER + td.BorrowUser,
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_KEEPER_CONFIRMED,
+							},
+						},
+					},
+					{
+						role:                KEEPER,
+						chid:                td.Keeper1Id_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+						brq: BorrowRequest{
+							StepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							Tags: []string{
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_KEEPER_CONFIRMED,
+							},
+						},
+					},
+					{
+						role:                KEEPER,
+						chid:                td.Keeper2Id_botId,
+						notifiy:             true,
+						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+						brq: BorrowRequest{
+							StepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							Tags: []string{
+								TAG_PREFIX_LIBWORKER + worker,
+								TAG_PREFIX_KEEPER + "kpuser1",
+								TAG_PREFIX_KEEPER + "kpuser2",
+								TAG_PREFIX_STATUS + STATUS_KEEPER_CONFIRMED,
+							},
+						},
+					},
+				},
 			},
 			{
 				WorkflowRequest{
@@ -335,7 +419,7 @@ func TestHandleWorkflow(t *testing.T) {
 						role:                MASTER,
 						chid:                td.BorChannelId,
 						notifiy:             true,
-						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+						LastActualStepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
 						brq: BorrowRequest{
 							StepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
@@ -351,7 +435,7 @@ func TestHandleWorkflow(t *testing.T) {
 						role:                BORROWER,
 						chid:                td.BorId_botId,
 						notifiy:             true,
-						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+						LastActualStepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
 						brq: BorrowRequest{
 							StepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
@@ -365,7 +449,7 @@ func TestHandleWorkflow(t *testing.T) {
 						role:                LIBWORKER,
 						chid:                worker_botId,
 						notifiy:             true,
-						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+						LastActualStepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
 						brq: BorrowRequest{
 							StepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
@@ -380,7 +464,7 @@ func TestHandleWorkflow(t *testing.T) {
 					{
 						role:                KEEPER,
 						chid:                td.Keeper1Id_botId,
-						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+						LastActualStepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
 						brq: BorrowRequest{
 							StepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
@@ -394,7 +478,7 @@ func TestHandleWorkflow(t *testing.T) {
 					{
 						role:                KEEPER,
 						chid:                td.Keeper2Id_botId,
-						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+						LastActualStepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
 						brq: BorrowRequest{
 							StepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
 							Tags: []string{
@@ -921,7 +1005,7 @@ func TestHandleWorkflow(t *testing.T) {
 
 }
 
-func TestInvFlow(t *testing.T) {
+func TestWorkflowInvFlow(t *testing.T) {
 	logSwitch = true
 	_ = fmt.Println
 
@@ -953,6 +1037,17 @@ func TestInvFlow(t *testing.T) {
 			{
 				WorkflowRequest{
 					NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						Stock:       2,
+						TransmitOut: 1,
+					},
+				},
+			},
+			{
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
 				},
 				testResult{
 					inv: BookInventory{
@@ -1141,7 +1236,6 @@ func TestInvFlow(t *testing.T) {
 		json.Unmarshal([]byte(postPub.Message), &pub)
 		assert.Equalf(t, true, pub.IsAllowedToBorrow, "should be available")
 		assert.Equalf(t, "", pub.ReasonOfDisallowed, "should be cleared")
-
 	})
 
 	t.Run("no toggling on if manually disallowed", func(t *testing.T) {
@@ -1155,7 +1249,7 @@ func TestInvFlow(t *testing.T) {
 			w *httptest.ResponseRecorder
 		)
 		for _, status := range []string{
-			STATUS_CONFIRMED,
+			STATUS_KEEPER_CONFIRMED,
 			STATUS_DELIVIED,
 			STATUS_RETURN_REQUESTED,
 			STATUS_RETURN_CONFIRMED,
@@ -1188,7 +1282,7 @@ func TestInvFlow(t *testing.T) {
 
 }
 
-func TestRevert(t *testing.T) {
+func TestWorkflowRevert(t *testing.T) {
 
 	type testResult struct {
 		inv        BookInventory
@@ -1215,6 +1309,7 @@ func TestRevert(t *testing.T) {
 		//move to last initially
 		for _, status := range []string{
 			STATUS_CONFIRMED,
+			STATUS_KEEPER_CONFIRMED,
 			STATUS_DELIVIED,
 			STATUS_RENEW_REQUESTED,
 			STATUS_RENEW_CONFIRMED,
@@ -1286,6 +1381,17 @@ func TestRevert(t *testing.T) {
 				testResult{
 					inv: BookInventory{
 						Lending: 1,
+					},
+					renewTimes: 0,
+				},
+			},
+                        {
+				WorkflowRequest{
+					NextStepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+				},
+				testResult{
+					inv: BookInventory{
+						TransmitOut: 1,
 					},
 					renewTimes: 0,
 				},
@@ -1403,7 +1509,7 @@ func TestRevert(t *testing.T) {
 	})
 }
 
-func TestLock(t *testing.T) {
+func TestWorkflowLock(t *testing.T) {
 	logSwitch = false
 	_ = fmt.Println
 
@@ -1574,7 +1680,7 @@ func _sendAndCheckATestWFRequest(t *testing.T, env *workflowEnv, status string, 
 	}
 }
 
-func TestRollback(t *testing.T) {
+func TestWorkflowRollback(t *testing.T) {
 
 	logSwitch = false
 	_ = fmt.Println
@@ -1670,7 +1776,7 @@ func TestRollback(t *testing.T) {
 
 }
 
-func TestBorrowRestrict(t *testing.T) {
+func TestWorkflowBorrowRestrict(t *testing.T) {
 	logSwitch = false
 	_ = fmt.Println
 
@@ -1809,7 +1915,7 @@ func TestBorrowRestrict(t *testing.T) {
 
 }
 
-func TestRenewTimes(t *testing.T) {
+func TestWorkflowRenewTimes(t *testing.T) {
 
 	t.Run("renew until max times", func(t *testing.T) {
 
@@ -1827,6 +1933,7 @@ func TestRenewTimes(t *testing.T) {
 		env.plugin.ServeHTTP(nil, w, r)
 
 		for _, status := range []string{
+                        STATUS_KEEPER_CONFIRMED,
 			STATUS_DELIVIED,
 			STATUS_RENEW_REQUESTED,
 			STATUS_RENEW_CONFIRMED,
@@ -1875,6 +1982,7 @@ func TestRenewTimes(t *testing.T) {
 
 		for _, status := range []string{
 			STATUS_CONFIRMED,
+                        STATUS_KEEPER_CONFIRMED,
 			STATUS_DELIVIED,
 			STATUS_RENEW_REQUESTED,
 			STATUS_RENEW_CONFIRMED,
@@ -1909,6 +2017,7 @@ func TestRenewTimes(t *testing.T) {
 
 		for _, status := range []string{
 			STATUS_CONFIRMED,
+                        STATUS_KEEPER_CONFIRMED,
 			STATUS_DELIVIED,
 			STATUS_RENEW_REQUESTED,
 			STATUS_RENEW_CONFIRMED,
@@ -1959,6 +2068,7 @@ func TestWorkflowJump(t *testing.T) {
 
 		for _, status := range []string{
 			STATUS_CONFIRMED,
+                        STATUS_KEEPER_CONFIRMED,
 			STATUS_DELIVIED,
 			STATUS_RENEW_REQUESTED,
 			STATUS_RENEW_CONFIRMED,
@@ -2024,6 +2134,7 @@ func TestWorkflowJump(t *testing.T) {
 
 		for _, status := range []string{
 			STATUS_CONFIRMED,
+                        STATUS_KEEPER_CONFIRMED,
 			STATUS_DELIVIED,
 			STATUS_REQUESTED,
 		} {
@@ -2052,7 +2163,7 @@ func TestWorkflowJump(t *testing.T) {
 	})
 }
 
-func TestBorrowDelete(t *testing.T) {
+func TestWorkflowBorrowDelete(t *testing.T) {
 	logSwitch = true
 	_ = fmt.Println
 
@@ -2105,7 +2216,7 @@ func TestBorrowDelete(t *testing.T) {
 		req := WorkflowRequest{
 			MasterPostKey: env.createdPid[env.td.BorChannelId],
 			ActorUser:     env.worker,
-			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
+			NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
 		}
 
 		wfrJson, _ := json.Marshal(req)
@@ -2138,6 +2249,10 @@ func TestBorrowDelete(t *testing.T) {
 				STATUS_CONFIRMED,
 				false,
 			},
+                        {
+				STATUS_KEEPER_CONFIRMED,
+				false,
+			},
 			{
 				STATUS_DELIVIED,
 				true,
@@ -2165,7 +2280,7 @@ func TestBorrowDelete(t *testing.T) {
 		} {
 			performNext(env.workflowEnv, step.status, false)
 
-			performDelete(env.workflowEnv, false)
+			performDelete(env.workflowEnv, step.assertError)
 		}
 
 	})
@@ -2193,6 +2308,32 @@ func TestBorrowDelete(t *testing.T) {
 		assert.Equalf(t, 1, inv.TransmitOut, "stock")
 		performDelete(env.workflowEnv, false)
 		inv = getInv(env.workflowEnv)
+		assert.Equalf(t, 1, inv.Stock, "stock")
+		assert.Equalf(t, 0, inv.TransmitOut, "stock")
+		assert.Equalf(t, true, env.td.ABookPub.IsAllowedToBorrow, "stock should be available")
+		assert.Equalf(t, "", env.td.ABookPub.ReasonOfDisallowed, "reason should be cleared")
+	})
+
+	t.Run("delete keeper confirmed", func(t *testing.T) {
+
+		getInv := func(env *workflowEnv) *BookInventory {
+			invPost := env.td.RealBookPostUpd[env.td.BookChIdInv]
+			inv := &BookInventory{}
+			json.Unmarshal([]byte(invPost.Message), inv)
+			return inv
+		}
+
+		env := newEnv()
+		env.td.ABookInv = &BookInventory{
+			Stock:       1,
+			TransmitOut: 0,
+			Lending:     0,
+			TransmitIn:  0,
+		}
+		performNext(env.workflowEnv, STATUS_CONFIRMED, false)
+		performNext(env.workflowEnv, STATUS_KEEPER_CONFIRMED, false)
+		performDelete(env.workflowEnv, false)
+                inv := getInv(env.workflowEnv)
 		assert.Equalf(t, 1, inv.Stock, "stock")
 		assert.Equalf(t, 0, inv.TransmitOut, "stock")
 		assert.Equalf(t, true, env.td.ABookPub.IsAllowedToBorrow, "stock should be available")

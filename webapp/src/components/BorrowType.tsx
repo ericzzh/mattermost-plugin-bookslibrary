@@ -52,6 +52,7 @@ import { Template } from "../utils";
 
 const STATUS_REQUESTED = "R";
 const STATUS_CONFIRMED = "C";
+const STATUS_KEEPER_CONFIRMED = "KC";
 const STATUS_DELIVIED = "D";
 const STATUS_RENEW_REQUESTED = "RR";
 const STATUS_RENEW_CONFIRMED = "RC";
@@ -69,16 +70,27 @@ const TEXT: Record<string, string> = {
     ["WF_" + WORKFLOW_BORROW]: "借书流程",
     ["WF_" + WORKFLOW_RENEW]: "续借流程",
     ["WF_" + WORKFLOW_RETURN]: "还书流程",
-    ["ST_" + STATUS_REQUESTED]: "借书请求",
-    ["ST_" + STATUS_CONFIRMED]: "借书确认",
-    ["ST_" + STATUS_DELIVIED]: "已收书",
-    ["ST_" + STATUS_RENEW_REQUESTED]: "续借请求",
-    ["ST_" + STATUS_RENEW_CONFIRMED]: "续借确认",
-    ["ST_" + STATUS_RETURN_REQUESTED]: "还书请求",
-    ["ST_" + STATUS_RETURN_CONFIRMED]: "还书确认",
-    ["ST_" + STATUS_RETURNED]: "已还书",
+    ["ST_" + STATUS_REQUESTED]: "请求",
+    ["ST_" + STATUS_CONFIRMED]: "确认",
+    ["ST_" + STATUS_KEEPER_CONFIRMED]: "出书",
+    ["ST_" + STATUS_DELIVIED]: "收书",
+    ["ST_" + STATUS_RENEW_REQUESTED]: "请求",
+    ["ST_" + STATUS_RENEW_CONFIRMED]: "确认",
+    ["ST_" + STATUS_RETURN_REQUESTED]: "请求",
+    ["ST_" + STATUS_RETURN_CONFIRMED]: "确认",
+    ["ST_" + STATUS_RETURNED]: "还书",
+    ["BTN_" + STATUS_REQUESTED]: "借书请求",
+    ["BTN_" + STATUS_CONFIRMED]: "借书确认",
+    ["BTN_" + STATUS_KEEPER_CONFIRMED]: "出书",
+    ["BTN_" + STATUS_DELIVIED]: "收书",
+    ["BTN_" + STATUS_RENEW_REQUESTED]: "续借请求",
+    ["BTN_" + STATUS_RENEW_CONFIRMED]: "续借确认",
+    ["BTN_" + STATUS_RETURN_REQUESTED]: "还书请求",
+    ["BTN_" + STATUS_RETURN_CONFIRMED]: "还书确认",
+    ["BTN_" + STATUS_RETURNED]: "还书",
     ["DATE_" + STATUS_REQUESTED]: "借阅请求日",
     ["DATE_" + STATUS_CONFIRMED]: "借阅确认日",
+    ["DATE_" + STATUS_KEEPER_CONFIRMED]: "保管员确认日",
     ["DATE_" + STATUS_DELIVIED]: "收书日",
     ["DATE_" + STATUS_RENEW_REQUESTED]: "续借请求日",
     ["DATE_" + STATUS_RENEW_CONFIRMED]: "续借确认日",
@@ -332,6 +344,7 @@ function BorrowType(props: any) {
             ) !== -1 &&
             (currentStep.status === STATUS_REQUESTED ||
                 currentStep.status === STATUS_CONFIRMED ||
+                currentStep.status === STATUS_KEEPER_CONFIRMED ||
                 currentStep.status === STATUS_RETURNED)
         ) {
             return true;
@@ -669,6 +682,7 @@ function BorrowType(props: any) {
             "& .MuiStepLabel-label": {
                 fontSize: "1.2rem",
             },
+            padding:"15px",
         };
     });
 
@@ -762,8 +776,8 @@ function BorrowType(props: any) {
             backgroundColor: "#ccc",
             zIndex: 1,
             color: "#fff",
-            width: 50,
-            height: 50,
+            width: 40,
+            height: 40,
             display: "flex",
             borderRadius: "50%",
             justifyContent: "center",
@@ -931,7 +945,7 @@ function BorrowType(props: any) {
                         color={"primary"}
                         onClick={() => handleStep(n, false)}
                     >
-                        {TEXT["ST_" + workflow[n].status]}
+                        {TEXT["BTN_" + workflow[n].status]}
                     </StyledWFButton>
                 );
             }

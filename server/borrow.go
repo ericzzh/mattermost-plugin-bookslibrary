@@ -410,12 +410,24 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 		{
 			WorkflowType:  WORKFLOW_BORROW,
 			Status:        STATUS_CONFIRMED,
-			ActorRole:     BORROWER,
+			ActorRole:     KEEPER,
 			Completed:     false,
 			ActionDate:    0,
 			NextStepIndex: []int{2},
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER, KEEPER,
+			},
+			LastActualStepIndex: -1,
+		}, 
+                {
+			WorkflowType:  WORKFLOW_BORROW,
+			Status:        STATUS_KEEPER_CONFIRMED,
+			ActorRole:     BORROWER,
+			Completed:     false,
+			ActionDate:    0,
+			NextStepIndex: []int{3},
+			RelatedRoles: []string{
+				MASTER, LIBWORKER, KEEPER,
 			},
 			LastActualStepIndex: -1,
 		},
@@ -425,7 +437,7 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 			ActorRole:     BORROWER,
 			Completed:     false,
 			ActionDate:    0,
-			NextStepIndex: []int{3, 5},
+			NextStepIndex: []int{4, 6},
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER,
 			},
@@ -437,7 +449,7 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 			ActorRole:     LIBWORKER,
 			Completed:     false,
 			ActionDate:    0,
-			NextStepIndex: []int{4},
+			NextStepIndex: []int{5},
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER,
 			},
@@ -449,7 +461,7 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 			ActorRole:     BORROWER,
 			Completed:     false,
 			ActionDate:    0,
-			NextStepIndex: []int{5, 3},
+			NextStepIndex: []int{6, 4},
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER,
 			},
@@ -461,7 +473,7 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 			ActorRole:     LIBWORKER,
 			Completed:     false,
 			ActionDate:    0,
-			NextStepIndex: []int{6},
+			NextStepIndex: []int{7},
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER,
 			},
@@ -473,7 +485,7 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 			ActorRole:     KEEPER,
 			Completed:     false,
 			ActionDate:    0,
-			NextStepIndex: []int{7},
+			NextStepIndex: []int{8},
 			RelatedRoles: []string{
 				MASTER, BORROWER, LIBWORKER, KEEPER,
 			},

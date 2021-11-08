@@ -200,16 +200,16 @@ func (p *Plugin) _processInventoryOfSingleStep(workflow []Step, currStep *Step, 
 
 			if inv.Stock <= 0 && pub.IsAllowedToBorrow {
 				pub.IsAllowedToBorrow = false
-                                pub.ReasonOfDisallowed = p.i18n.GetText("no-stock")
+				pub.ReasonOfDisallowed = p.i18n.GetText("no-stock")
 			}
 
 			if inv.Stock != 0 && !pub.IsAllowedToBorrow && !pub.ManuallyDisallowed {
 				pub.IsAllowedToBorrow = true
-                                pub.ReasonOfDisallowed = ""
+				pub.ReasonOfDisallowed = ""
 			}
 
 			inv.TransmitOut += increment
-
+		case STATUS_KEEPER_CONFIRMED:
 		case STATUS_DELIVIED:
 			inv.TransmitOut -= increment
 			inv.Lending += increment
@@ -236,12 +236,12 @@ func (p *Plugin) _processInventoryOfSingleStep(workflow []Step, currStep *Step, 
 			if inv.Stock > 0 &&
 				!pub.IsAllowedToBorrow && !pub.ManuallyDisallowed {
 				pub.IsAllowedToBorrow = true
-                                pub.ReasonOfDisallowed = ""
+				pub.ReasonOfDisallowed = ""
 			}
 			if inv.Stock <= 0 &&
 				pub.IsAllowedToBorrow {
 				pub.IsAllowedToBorrow = false
-                                pub.ReasonOfDisallowed = p.i18n.GetText("no-stock")
+				pub.ReasonOfDisallowed = p.i18n.GetText("no-stock")
 			}
 		default:
 			return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", refStep.Status, refStep.WorkflowType))
@@ -272,6 +272,7 @@ func (p *Plugin) _processRenewOfSingleStep(br *borrowWithPost, workflow []Step, 
 		switch refStep.Status {
 		case STATUS_REQUESTED:
 		case STATUS_CONFIRMED:
+		case STATUS_KEEPER_CONFIRMED:
 		case STATUS_DELIVIED:
 		default:
 			return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", refStep.Status, refStep.WorkflowType))
@@ -322,6 +323,7 @@ func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost
 			switch nextStep.Status {
 			case STATUS_REQUESTED:
 			case STATUS_CONFIRMED:
+			case STATUS_KEEPER_CONFIRMED:
 			case STATUS_DELIVIED:
 			default:
 				return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", nextStep.Status, nextStep.WorkflowType))
@@ -397,6 +399,7 @@ func (p *Plugin) _deleteBorrowRequest(req *WorkflowRequest, all map[string][]*bo
 
 	if st != STATUS_REQUESTED &&
 		st != STATUS_CONFIRMED &&
+                st != STATUS_KEEPER_CONFIRMED &&
 		st != STATUS_RETURNED {
 
 		return errors.New("the request is not allowed to be deleted.")
@@ -414,14 +417,14 @@ func (p *Plugin) _deleteBorrowRequest(req *WorkflowRequest, all map[string][]*bo
 				if role == MASTER {
 					// we must place the inventory adjustment firslty when processing Master
 					// this leave a chance to retry when update book parts error
-					if st == STATUS_CONFIRMED {
+					if st == STATUS_CONFIRMED || st == STATUS_KEEPER_CONFIRMED {
 						inv := bookInfo.book.BookInventory
 						inv.TransmitOut--
 						inv.Stock++
 
 						if inv.Stock > 0 && !bookInfo.book.IsAllowedToBorrow && !bookInfo.book.ManuallyDisallowed {
 							bookInfo.book.IsAllowedToBorrow = true
-                                                        bookInfo.book.ReasonOfDisallowed = ""
+							bookInfo.book.ReasonOfDisallowed = ""
 						}
 
 						if err := p._updateBookParts(updateOptions{
