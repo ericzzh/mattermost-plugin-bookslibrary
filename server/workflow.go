@@ -592,7 +592,7 @@ func (p *Plugin) _save(all map[string][]*borrowWithPost, bookInfo *bookInfo) err
 
 		brw := all[role.name]
 		for _, br := range brw {
-			brJson, err := json.Marshal(br.borrow)
+			brJson, err := json.MarshalIndent(br.borrow, "", "  ")
 			if err != nil {
 				p._rollbackToOld(updated)
 				return errors.Wrapf(err, fmt.Sprintf("Marshal %v error.", role))
