@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -30,6 +31,8 @@ type workflowEnv struct {
 	realbrDelPosts    map[string]string
 	realbrDelPostsSeq []string
 	createdPid        map[string]string
+	//for pass API mock matching
+	createdPid_1      map[string]string
 	chidByCreatedPid  map[string]string
 	worker            string
 	worker_botId      string
@@ -187,8 +190,18 @@ func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
 				return nil
 			})
 
-		env.api.On("DeletePost", env.createdPid[channelId]).
-			Return(func(id string) *model.AppError {
+		matchFun := func(channelId string) func(string) bool {
+			return func(id string) bool {
+				matchId, ok := env.createdPid_1[channelId]
+				if !ok {
+					matchId = env.createdPid[channelId]
+				}
+				return matchId == id
+			}
+		}
+		env.api.On("DeletePost", mock.MatchedBy(
+			matchFun(channelId))).Return(
+			func(id string) *model.AppError {
 				env.realbrDelPosts[env.chidByCreatedPid[id]] = id
 				env.realbrDelPostsSeq = append(env.realbrDelPostsSeq, id)
 				return nil
@@ -196,6 +209,8 @@ func newWorkflowEnv(injects ...injectOpt) *workflowEnv {
 		env.api.On("CreatePost", mock.MatchedBy(matchThreadByChannel(channelId))).
 			Run(saveNotifiyThread).Return(&model.Post{}, nil)
 	}
+
+	env.createdPid_1 = map[string]string{}
 
 	return &env
 }
@@ -221,6 +236,8 @@ func TestWorkflowHandle(t *testing.T) {
 		role                string
 		chid                string
 		notifiy             bool
+		delete              bool
+		relationKeys        *RelationKeys
 		brq                 BorrowRequest
 		LastActualStepIndex int
 	}
@@ -328,6 +345,7 @@ func TestWorkflowHandle(t *testing.T) {
 					MasterPostKey: createdPid[td.BorChannelId],
 					ActorUser:     td.ABook.KeeperUsers[0],
 					NextStepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+					ChosenCopyId:  "zzh-book-001 b1",
 				},
 				[]testResult{
 					{
@@ -335,14 +353,25 @@ func TestWorkflowHandle(t *testing.T) {
 						chid:                td.BorChannelId,
 						notifiy:             true,
 						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
+						relationKeys: &RelationKeys{
+							Book:      td.BookPostIdPub,
+							Borrower:  createdPid[td.BorId_botId],
+							Libworker: createdPid[worker_botId],
+							Keepers: []string{
+								createdPid[td.Keeper1Id_botId],
+							},
+						},
 						brq: BorrowRequest{
-							StepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							StepIndex:    _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							KeeperUsers:  []string{"kpuser1"},
+							KeeperNames:  []string{"kpname1"},
+							ChosenCopyId: "zzh-book-001 b1",
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_KEEPER_CONFIRMED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -352,11 +381,13 @@ func TestWorkflowHandle(t *testing.T) {
 						notifiy:             false,
 						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							StepIndex:    _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							ChosenCopyId: "zzh-book-001 b1",
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_STATUS + STATUS_KEEPER_CONFIRMED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -366,13 +397,16 @@ func TestWorkflowHandle(t *testing.T) {
 						notifiy:             true,
 						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							StepIndex:    _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							KeeperUsers:  []string{"kpuser1"},
+							KeeperNames:  []string{"kpname1"},
+							ChosenCopyId: "zzh-book-001 b1",
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_KEEPER_CONFIRMED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -382,12 +416,15 @@ func TestWorkflowHandle(t *testing.T) {
 						notifiy:             true,
 						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							StepIndex:    _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							KeeperUsers:  []string{"kpuser1"},
+							KeeperNames:  []string{"kpname1"},
+							ChosenCopyId: "zzh-book-001 b1",
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_KEEPER_CONFIRMED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -396,15 +433,8 @@ func TestWorkflowHandle(t *testing.T) {
 						chid:                td.Keeper2Id_botId,
 						notifiy:             true,
 						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
-						brq: BorrowRequest{
-							StepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
-							Tags: []string{
-								TAG_PREFIX_LIBWORKER + worker,
-								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
-								TAG_PREFIX_STATUS + STATUS_KEEPER_CONFIRMED,
-							},
-						},
+						delete:              true,
+						brq:                 BorrowRequest{},
 					},
 				},
 			},
@@ -426,8 +456,8 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_DELIVIED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -442,6 +472,7 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_STATUS + STATUS_DELIVIED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -456,8 +487,8 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_DELIVIED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -470,22 +501,8 @@ func TestWorkflowHandle(t *testing.T) {
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_DELIVIED,
-							},
-						},
-					},
-					{
-						role:                KEEPER,
-						chid:                td.Keeper2Id_botId,
-						LastActualStepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
-						brq: BorrowRequest{
-							StepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
-							Tags: []string{
-								TAG_PREFIX_LIBWORKER + worker,
-								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
-								TAG_PREFIX_STATUS + STATUS_DELIVIED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -508,8 +525,8 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RENEW_REQUESTED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -524,6 +541,7 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_STATUS + STATUS_RENEW_REQUESTED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -538,8 +556,8 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RENEW_REQUESTED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -552,22 +570,8 @@ func TestWorkflowHandle(t *testing.T) {
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RENEW_REQUESTED,
-							},
-						},
-					},
-					{
-						role:                KEEPER,
-						chid:                td.Keeper2Id_botId,
-						LastActualStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
-						brq: BorrowRequest{
-							StepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
-							Tags: []string{
-								TAG_PREFIX_LIBWORKER + worker,
-								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
-								TAG_PREFIX_STATUS + STATUS_RENEW_REQUESTED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -590,8 +594,8 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RENEW_CONFIRMED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -606,6 +610,7 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_STATUS + STATUS_RENEW_CONFIRMED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -620,8 +625,8 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RENEW_CONFIRMED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -634,22 +639,8 @@ func TestWorkflowHandle(t *testing.T) {
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RENEW_CONFIRMED,
-							},
-						},
-					},
-					{
-						role:                KEEPER,
-						chid:                td.Keeper2Id_botId,
-						LastActualStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
-						brq: BorrowRequest{
-							StepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
-							Tags: []string{
-								TAG_PREFIX_LIBWORKER + worker,
-								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
-								TAG_PREFIX_STATUS + STATUS_RENEW_CONFIRMED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -672,8 +663,8 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RETURN_REQUESTED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -688,6 +679,7 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_STATUS + STATUS_RETURN_REQUESTED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -702,8 +694,8 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RETURN_REQUESTED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -717,23 +709,8 @@ func TestWorkflowHandle(t *testing.T) {
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RETURN_REQUESTED,
-							},
-						},
-					},
-					{
-						role:                KEEPER,
-						chid:                td.Keeper2Id_botId,
-						notifiy:             false,
-						LastActualStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
-						brq: BorrowRequest{
-							StepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
-							Tags: []string{
-								TAG_PREFIX_LIBWORKER + worker,
-								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
-								TAG_PREFIX_STATUS + STATUS_RETURN_REQUESTED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -756,8 +733,8 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RETURN_CONFIRMED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -772,6 +749,7 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_STATUS + STATUS_RETURN_CONFIRMED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -786,8 +764,8 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RETURN_CONFIRMED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -801,23 +779,8 @@ func TestWorkflowHandle(t *testing.T) {
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RETURN_CONFIRMED,
-							},
-						},
-					},
-					{
-						role:                KEEPER,
-						chid:                td.Keeper2Id_botId,
-						notifiy:             true,
-						LastActualStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
-						brq: BorrowRequest{
-							StepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
-							Tags: []string{
-								TAG_PREFIX_LIBWORKER + worker,
-								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
-								TAG_PREFIX_STATUS + STATUS_RETURN_CONFIRMED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -840,8 +803,8 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RETURNED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -855,6 +818,7 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_STATUS + STATUS_RETURNED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -869,8 +833,8 @@ func TestWorkflowHandle(t *testing.T) {
 								TAG_PREFIX_BORROWER + td.BorrowUser,
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RETURNED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -884,23 +848,8 @@ func TestWorkflowHandle(t *testing.T) {
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
 								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
 								TAG_PREFIX_STATUS + STATUS_RETURNED,
-							},
-						},
-					},
-					{
-						role:                KEEPER,
-						chid:                td.Keeper2Id_botId,
-						notifiy:             true,
-						LastActualStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
-						brq: BorrowRequest{
-							StepIndex: _getIndexByStatus(STATUS_RETURNED, wf),
-							Tags: []string{
-								TAG_PREFIX_LIBWORKER + worker,
-								TAG_PREFIX_KEEPER + "kpuser1",
-								TAG_PREFIX_KEEPER + "kpuser2",
-								TAG_PREFIX_STATUS + STATUS_RETURNED,
+								TAG_PREFIX_COPYID + "zzh-book-001_b1",
 							},
 						},
 					},
@@ -948,6 +897,12 @@ func TestWorkflowHandle(t *testing.T) {
 			wf[step.wfr.NextStepIndex].Completed = true
 
 			for _, test := range step.result {
+
+				if test.delete {
+					assert.Equalf(t, createdPid[test.chid], env.realbrDelPosts[test.chid], "this post should be deleted, role:%v", test.role)
+					continue
+				}
+
 				wf[step.wfr.NextStepIndex].LastActualStepIndex = test.LastActualStepIndex
 
 				oldPost := oldPosts[test.chid]
@@ -973,6 +928,31 @@ func TestWorkflowHandle(t *testing.T) {
 				assert.Equalf(t, test.brq.Tags, newBorrow.DataOrImage.Tags,
 					"in step: %v, role: %v", expStep, test.role)
 
+				if test.brq.KeeperUsers != nil {
+					assert.Equalf(t, test.brq.KeeperUsers, newBorrow.DataOrImage.KeeperUsers,
+						"in step: %v, role: %v", expStep, test.role)
+					assert.Equalf(t, test.brq.KeeperNames, newBorrow.DataOrImage.KeeperNames,
+						"in step: %v, role: %v", expStep, test.role)
+					newBorrow.DataOrImage.KeeperUsers = nil
+					oldBorrow.DataOrImage.KeeperUsers = nil
+					newBorrow.DataOrImage.KeeperNames = nil
+					oldBorrow.DataOrImage.KeeperNames = nil
+				}
+
+				if test.brq.ChosenCopyId != "" {
+					assert.Equalf(t, test.brq.ChosenCopyId, newBorrow.DataOrImage.ChosenCopyId,
+						"in step: %v, role: %v", expStep, test.role)
+					newBorrow.DataOrImage.ChosenCopyId = ""
+					oldBorrow.DataOrImage.ChosenCopyId = ""
+				}
+
+				if test.relationKeys != nil {
+					assert.Equalf(t, *test.relationKeys, newBorrow.RelationKeys,
+						"in step: %v, role: %v", expStep, test.role)
+					newBorrow.RelationKeys = RelationKeys{}
+					oldBorrow.RelationKeys = RelationKeys{}
+				}
+
 				newBorrow.DataOrImage.Worflow = nil
 				oldBorrow.DataOrImage.Worflow = nil
 				newBorrow.DataOrImage.StepIndex = -1
@@ -984,6 +964,10 @@ func TestWorkflowHandle(t *testing.T) {
 				oldBorrow.DataOrImage.RenewedTimes = 0
 				newBorrow.DataOrImage.RenewedTimes = 0
 
+                                //because the non-master part will be recontructed every time
+                                //the order is not granteened
+                                sort.Strings(oldBorrow.RelationKeys.Keepers)
+                                sort.Strings(newBorrow.RelationKeys.Keepers)
 				assert.Equalf(t, oldBorrow, newBorrow,
 					"in step: %v", expStep)
 
@@ -1005,6 +989,71 @@ func TestWorkflowHandle(t *testing.T) {
 
 }
 
+func getActor(env *workflowEnv, status string) string {
+	switch status {
+	case STATUS_CONFIRMED:
+		return env.worker
+	case STATUS_KEEPER_CONFIRMED:
+		if env.worker != env.td.ABookPri.KeeperUsers[0] {
+			return env.td.ABookPri.KeeperUsers[0]
+		} else {
+			return env.td.ABookPri.KeeperUsers[1]
+		}
+	case STATUS_DELIVIED:
+		return env.td.BorrowUser
+	case STATUS_RENEW_REQUESTED:
+		return env.td.BorrowUser
+	case STATUS_RENEW_CONFIRMED:
+		return env.worker
+	case STATUS_RETURN_REQUESTED:
+		return env.td.BorrowUser
+	case STATUS_RETURN_CONFIRMED:
+		return env.worker
+	case STATUS_RETURNED:
+		return env.td.ABookPri.KeeperUsers[0]
+	}
+
+	return ""
+}
+
+type performNextOption struct {
+	chosen       string
+	backward     bool
+	errorMessage string
+}
+
+func performNext(t *testing.T, env *workflowEnv, status string, assertError bool, opt performNextOption) {
+
+	var chosen string
+	if status == STATUS_KEEPER_CONFIRMED {
+		chosen = opt.chosen
+	}
+	req := WorkflowRequest{
+		MasterPostKey: env.createdPid[env.td.BorChannelId],
+		ActorUser:     getActor(env, status),
+		NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
+		ChosenCopyId:  chosen,
+		Backward:      opt.backward,
+	}
+
+	wfrJson, _ := json.Marshal(req)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
+	env.plugin.ServeHTTP(nil, w, r)
+
+	res := new(Result)
+	json.NewDecoder(w.Result().Body).Decode(&res)
+
+	if assertError {
+		assert.NotEmptyf(t, res.Error, "response should has error. err:%v", res.Error)
+	} else {
+		assert.Emptyf(t, res.Error, "response should not has error. err:%v", res.Error)
+		if opt.errorMessage != "" {
+			assert.Containsf(t, res.Error, opt.errorMessage, "should contain message:%v", opt.errorMessage)
+		}
+	}
+}
 func TestWorkflowInvFlow(t *testing.T) {
 	logSwitch = true
 	_ = fmt.Println
@@ -1026,7 +1075,6 @@ func TestWorkflowInvFlow(t *testing.T) {
 
 		createdPid := env.createdPid
 
-		worker := env.worker
 		var master Borrow
 
 		json.Unmarshal([]byte(env.realbrUpdPosts[env.td.BorChannelId].Message), &master)
@@ -1040,19 +1088,30 @@ func TestWorkflowInvFlow(t *testing.T) {
 				},
 				testResult{
 					inv: BookInventory{
-						Stock:       2,
-						TransmitOut: 1,
+						Stock:       3,
+						TransmitOut: 0,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+							"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_INSTOCK},
+							"zzh-book-001 b3": BookCopy{Status: COPY_STATUS_INSTOCK},
+						},
 					},
 				},
 			},
 			{
 				WorkflowRequest{
 					NextStepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+					ChosenCopyId:  "zzh-book-001 b1",
 				},
 				testResult{
 					inv: BookInventory{
 						Stock:       2,
 						TransmitOut: 1,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_TRANSOUT},
+							"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_INSTOCK},
+							"zzh-book-001 b3": BookCopy{Status: COPY_STATUS_INSTOCK},
+						},
 					},
 				},
 			},
@@ -1064,6 +1123,11 @@ func TestWorkflowInvFlow(t *testing.T) {
 					inv: BookInventory{
 						Stock:   2,
 						Lending: 1,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_LENDING},
+							"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_INSTOCK},
+							"zzh-book-001 b3": BookCopy{Status: COPY_STATUS_INSTOCK},
+						},
 					},
 				},
 			},
@@ -1075,6 +1139,11 @@ func TestWorkflowInvFlow(t *testing.T) {
 					inv: BookInventory{
 						Stock:   2,
 						Lending: 1,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_LENDING},
+							"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_INSTOCK},
+							"zzh-book-001 b3": BookCopy{Status: COPY_STATUS_INSTOCK},
+						},
 					},
 				},
 			},
@@ -1086,6 +1155,11 @@ func TestWorkflowInvFlow(t *testing.T) {
 					inv: BookInventory{
 						Stock:   2,
 						Lending: 1,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_LENDING},
+							"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_INSTOCK},
+							"zzh-book-001 b3": BookCopy{Status: COPY_STATUS_INSTOCK},
+						},
 					},
 				},
 			},
@@ -1097,6 +1171,11 @@ func TestWorkflowInvFlow(t *testing.T) {
 					inv: BookInventory{
 						Stock:   2,
 						Lending: 1,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_LENDING},
+							"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_INSTOCK},
+							"zzh-book-001 b3": BookCopy{Status: COPY_STATUS_INSTOCK},
+						},
 					},
 				},
 			},
@@ -1108,6 +1187,11 @@ func TestWorkflowInvFlow(t *testing.T) {
 					inv: BookInventory{
 						Stock:      2,
 						TransmitIn: 1,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_TRANSIN},
+							"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_INSTOCK},
+							"zzh-book-001 b3": BookCopy{Status: COPY_STATUS_INSTOCK},
+						},
 					},
 				},
 			},
@@ -1118,13 +1202,18 @@ func TestWorkflowInvFlow(t *testing.T) {
 				testResult{
 					inv: BookInventory{
 						Stock: 3,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+							"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_INSTOCK},
+							"zzh-book-001 b3": BookCopy{Status: COPY_STATUS_INSTOCK},
+						},
 					},
 				},
 			},
 		}
 
 		for _, step := range testWorkflow {
-			step.wfr.ActorUser = worker
+			step.wfr.ActorUser = getActor(env, wf[step.wfr.NextStepIndex].Status)
 			step.wfr.MasterPostKey = createdPid[env.td.BorChannelId]
 			wfrJson, _ := json.Marshal(step.wfr)
 
@@ -1144,76 +1233,108 @@ func TestWorkflowInvFlow(t *testing.T) {
 			env.td.ABookInv.TransmitOut = step.result.inv.TransmitOut
 			env.td.ABookInv.Lending = step.result.inv.Lending
 			env.td.ABookInv.TransmitIn = step.result.inv.TransmitIn
+			env.td.ABook.Copies = step.result.inv.Copies
 
 		}
 
 	})
 
-	t.Run("error if unsufficient", func(t *testing.T) {
+	t.Run("error if unsufficient, confirmed", func(t *testing.T) {
 		env := newWorkflowEnv()
-		env.td.ABookInv.Stock = 1
-
-		var (
-			w *httptest.ResponseRecorder
-		)
-		for _, status := range []string{
-			STATUS_CONFIRMED,
-			STATUS_CONFIRMED,
-		} {
-			wfrJson, _ := json.Marshal(WorkflowRequest{
-				ActorUser:     env.worker,
-				MasterPostKey: env.createdPid[env.td.BorChannelId],
-				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
-			})
-
-			w = httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			env.plugin.ServeHTTP(nil, w, r)
-
+		env.td.ABookInv = &BookInventory{
+			Stock: 1,
+			Copies: BookCopies{
+				"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+			},
+		}
+		env.td.ABookPri = &BookPrivate{
+			KeeperUsers: []string{"kpuser1"},
+			KeeperNames: []string{"kpname1"},
+			CopyKeeperMap: map[string]Keeper{
+				"zzh-book-001 b1": {User: "kpuser1"},
+			},
 		}
 
-		result := w.Result()
-		var resultObj *Result
-		json.NewDecoder(result.Body).Decode(&resultObj)
-		assert.NotEmptyf(t, resultObj.Error, "should be error")
+		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
+		//confirm should precheck stock
+		performNext(t, env, STATUS_KEEPER_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1"})
+		//keeper confirm actual reduce stock
+		performNext(t, env, STATUS_CONFIRMED, true, performNextOption{})
+
+	})
+
+	t.Run("error if unsufficient, keeper confirmed", func(t *testing.T) {
+		env := newWorkflowEnv()
+		env.td.ABookInv = &BookInventory{
+			Stock: 1,
+			Copies: BookCopies{
+				"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+			},
+		}
+		env.td.ABookPri = &BookPrivate{
+			KeeperUsers: []string{"kpuser1"},
+			KeeperNames: []string{"kpname1"},
+			CopyKeeperMap: map[string]Keeper{
+				"zzh-book-001 b1": {User: "kpuser1"},
+			},
+		}
+
+		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
+		//confirm should precheck stock
+		performNext(t, env, STATUS_KEEPER_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1"})
+		//keeper confirm actual reduce stock
+		performNext(t, env, STATUS_KEEPER_CONFIRMED, true, performNextOption{})
+
+	})
+
+	t.Run("error if choose a not instock copy", func(t *testing.T) {
+		env := newWorkflowEnv()
+
+		env.td.ABookInv = &BookInventory{
+			Stock: 2,
+			Copies: BookCopies{
+				"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+				"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_TRANSIN},
+			},
+		}
+		env.td.ABookPri.CopyKeeperMap = map[string]Keeper{
+			"zzh-book-001 b1": {User: "kpuser1"},
+			"zzh-book-001 b2": {User: "kpuser2"},
+		}
+
+		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
+		performNext(t, env, STATUS_KEEPER_CONFIRMED, true, performNextOption{chosen: "zzh-book-001 b2"})
 
 	})
 
 	t.Run("be unavailable if unsufficient, available if returned. ", func(t *testing.T) {
-		env := newWorkflowEnv(injectOpt{
-			invInject: &BookInventory{
-				Stock: 1,
+		env := newWorkflowEnv()
+		env.td.ABookInv = &BookInventory{
+			Stock: 1,
+			Copies: BookCopies{
+				"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
 			},
-		})
-		td := env.td
-		plugin := env.plugin
-		createdPid := env.createdPid
+		}
+		env.td.ABookPri = &BookPrivate{
+			KeeperUsers: []string{"kpuser1"},
+			KeeperNames: []string{"kpname1"},
+			CopyKeeperMap: map[string]Keeper{
+				"zzh-book-001 b1": {User: "kpuser1"},
+			},
+		}
 
-		worker := env.worker
-		var master Borrow
+		env.td.ABookPub.IsAllowedToBorrow = true
 
-		json.Unmarshal([]byte(env.realbrUpdPosts[env.td.BorChannelId].Message), &master)
-		masterBrq := master.DataOrImage
-		wf := plugin._createWFTemplate(masterBrq.Worflow[masterBrq.StepIndex].ActionDate)
+		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
+		performNext(t, env, STATUS_KEEPER_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1"})
 
-		td.ABookPub.IsAllowedToBorrow = true
-		wfrJson, _ := json.Marshal(WorkflowRequest{
-			ActorUser:     worker,
-			MasterPostKey: createdPid[td.BorChannelId],
-			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
-		})
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-		plugin.ServeHTTP(nil, w, r)
-
-		postPub := env.td.RealBookPostUpd[td.BookChIdPub]
+		postPub := env.td.RealBookPostUpd[env.td.BookChIdPub]
 		var pub BookPublic
 		json.Unmarshal([]byte(postPub.Message), &pub)
 		assert.Equalf(t, false, pub.IsAllowedToBorrow, "should be unavailable")
 		assert.Equalf(t, "无库存", pub.ReasonOfDisallowed, "should be text of no-stock")
 
-		td.ABookPub.IsAllowedToBorrow = false
+		env.td.ABookPub.IsAllowedToBorrow = false
 
 		for _, status := range []string{
 			STATUS_DELIVIED,
@@ -1221,18 +1342,10 @@ func TestWorkflowInvFlow(t *testing.T) {
 			STATUS_RETURN_CONFIRMED,
 			STATUS_RETURNED,
 		} {
-			wfrJson, _ := json.Marshal(WorkflowRequest{
-				ActorUser:     worker,
-				MasterPostKey: createdPid[td.BorChannelId],
-				NextStepIndex: _getIndexByStatus(status, wf),
-			})
-
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			plugin.ServeHTTP(nil, w, r)
+			performNext(t, env, status, false, performNextOption{})
 		}
 
-		postPub = env.td.RealBookPostUpd[td.BookChIdPub]
+		postPub = env.td.RealBookPostUpd[env.td.BookChIdPub]
 		json.Unmarshal([]byte(postPub.Message), &pub)
 		assert.Equalf(t, true, pub.IsAllowedToBorrow, "should be available")
 		assert.Equalf(t, "", pub.ReasonOfDisallowed, "should be cleared")
@@ -1241,13 +1354,22 @@ func TestWorkflowInvFlow(t *testing.T) {
 	t.Run("no toggling on if manually disallowed", func(t *testing.T) {
 
 		env := newWorkflowEnv()
-		env.td.ABookInv.Stock = 1
+		env.td.ABookInv = &BookInventory{
+			Stock: 1,
+			Copies: BookCopies{
+				"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+			},
+		}
+		env.td.ABookPri = &BookPrivate{
+			KeeperUsers: []string{"kpuser1"},
+			KeeperNames: []string{"kpname1"},
+			CopyKeeperMap: map[string]Keeper{
+				"zzh-book-001 b1": {User: "kpuser1"},
+			},
+		}
 		env.td.ABookPub.IsAllowedToBorrow = false
 		env.td.ABookPub.ManuallyDisallowed = true
 
-		var (
-			w *httptest.ResponseRecorder
-		)
 		for _, status := range []string{
 			STATUS_KEEPER_CONFIRMED,
 			STATUS_DELIVIED,
@@ -1255,22 +1377,8 @@ func TestWorkflowInvFlow(t *testing.T) {
 			STATUS_RETURN_CONFIRMED,
 			STATUS_RETURNED,
 		} {
-			wfrJson, _ := json.Marshal(WorkflowRequest{
-				ActorUser:     env.worker,
-				MasterPostKey: env.createdPid[env.td.BorChannelId],
-				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
-			})
-
-			w = httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			env.plugin.ServeHTTP(nil, w, r)
-
+			performNext(t, env, status, false, performNextOption{chosen: "zzh-book-001 b1"})
 		}
-
-		result := w.Result()
-		var resultObj *Result
-		json.NewDecoder(result.Body).Decode(&resultObj)
-		assert.Emptyf(t, resultObj.Error, "should not be error")
 
 		var pub BookPublic
 		postPub := env.td.RealBookPostUpd[env.td.BookChIdPub]
@@ -1286,11 +1394,12 @@ func TestWorkflowRevert(t *testing.T) {
 
 	type testResult struct {
 		inv        BookInventory
+		brq        BorrowRequest
 		renewTimes int
 	}
 
 	type testData struct {
-		wfr    WorkflowRequest
+		status string
 		result testResult
 	}
 
@@ -1298,13 +1407,14 @@ func TestWorkflowRevert(t *testing.T) {
 
 		env := newWorkflowEnv()
 		env.td.ABookInv = &BookInventory{
-			Stock:       1,
-			TransmitOut: 0,
-			Lending:     0,
-			TransmitIn:  0,
+			Stock: 1,
+			Copies: BookCopies{
+				"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+			},
 		}
-
-		wf := env.td.EmptyWorkflow
+		env.td.ABookPri.CopyKeeperMap = map[string]Keeper{
+			"zzh-book-001 b1": {User: "kpuser1"},
+		}
 
 		//move to last initially
 		for _, status := range []string{
@@ -1317,103 +1427,126 @@ func TestWorkflowRevert(t *testing.T) {
 			STATUS_RETURN_CONFIRMED,
 			STATUS_RETURNED,
 		} {
-
-			wfrJson, _ := json.Marshal(WorkflowRequest{
-				ActorUser:     env.worker,
-				MasterPostKey: env.createdPid[env.td.BorChannelId],
-				NextStepIndex: _getIndexByStatus(status, wf),
-			})
-
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			env.plugin.ServeHTTP(nil, w, r)
+			performNext(t, env, status, false, performNextOption{chosen: "zzh-book-001 b1"})
 		}
 
 		testWorkflow := []testData{
 			{
-				WorkflowRequest{
-					NextStepIndex: _getIndexByStatus(STATUS_RETURN_CONFIRMED, wf),
-				},
+				STATUS_RETURN_CONFIRMED,
 				testResult{
 					inv: BookInventory{
 						TransmitIn: 1,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_TRANSIN},
+						},
+					},
+					brq: BorrowRequest{
+						ChosenCopyId: "zzh-book-001 b1",
 					},
 					renewTimes: 1,
 				},
 			},
 			{
-				WorkflowRequest{
-					NextStepIndex: _getIndexByStatus(STATUS_RETURN_REQUESTED, wf),
-				},
+				STATUS_RETURN_REQUESTED,
 				testResult{
 					inv: BookInventory{
 						Lending: 1,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_LENDING},
+						},
+					},
+					brq: BorrowRequest{
+						ChosenCopyId: "zzh-book-001 b1",
 					},
 					renewTimes: 1,
 				},
 			},
 			{
-				WorkflowRequest{
-					NextStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, wf),
-				},
+				STATUS_RENEW_CONFIRMED,
 				testResult{
 					inv: BookInventory{
 						Lending: 1,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_LENDING},
+						},
+					},
+					brq: BorrowRequest{
+						ChosenCopyId: "zzh-book-001 b1",
 					},
 					renewTimes: 1,
 				},
 			},
 			{
-				WorkflowRequest{
-					NextStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, wf),
-				},
+				STATUS_RENEW_REQUESTED,
 				testResult{
 					inv: BookInventory{
 						Lending: 1,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_LENDING},
+						},
+					},
+					brq: BorrowRequest{
+						ChosenCopyId: "zzh-book-001 b1",
 					},
 					renewTimes: 0,
 				},
 			},
 			{
-				WorkflowRequest{
-					NextStepIndex: _getIndexByStatus(STATUS_DELIVIED, wf),
-				},
+				STATUS_DELIVIED,
 				testResult{
 					inv: BookInventory{
 						Lending: 1,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_LENDING},
+						},
+					},
+					brq: BorrowRequest{
+						ChosenCopyId: "zzh-book-001 b1",
 					},
 					renewTimes: 0,
 				},
 			},
-                        {
-				WorkflowRequest{
-					NextStepIndex: _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
-				},
+			{
+				STATUS_KEEPER_CONFIRMED,
 				testResult{
 					inv: BookInventory{
 						TransmitOut: 1,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_TRANSOUT},
+						},
+					},
+					brq: BorrowRequest{
+						ChosenCopyId: "zzh-book-001 b1",
 					},
 					renewTimes: 0,
 				},
 			},
 			{
-				WorkflowRequest{
-					NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
-				},
-				testResult{
-					inv: BookInventory{
-						TransmitOut: 1,
-					},
-					renewTimes: 0,
-				},
-			},
-			{
-				WorkflowRequest{
-					NextStepIndex: _getIndexByStatus(STATUS_REQUESTED, wf),
-				},
+				STATUS_CONFIRMED,
 				testResult{
 					inv: BookInventory{
 						Stock: 1,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+						},
+					},
+					brq: BorrowRequest{
+						ChosenCopyId: "",
+					},
+					renewTimes: 0,
+				},
+			},
+			{
+				STATUS_REQUESTED,
+				testResult{
+					inv: BookInventory{
+						Stock: 1,
+						Copies: BookCopies{
+							"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+						},
+					},
+					brq: BorrowRequest{
+						ChosenCopyId: "",
 					},
 					renewTimes: 0,
 				},
@@ -1421,14 +1554,8 @@ func TestWorkflowRevert(t *testing.T) {
 		}
 
 		for _, step := range testWorkflow {
-			step.wfr.ActorUser = env.worker
-			step.wfr.MasterPostKey = env.createdPid[env.td.BorChannelId]
-			step.wfr.Backward = true
-			wfrJson, _ := json.Marshal(step.wfr)
 
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			env.plugin.ServeHTTP(nil, w, r)
+			performNext(t, env, step.status, false, performNextOption{chosen: "zzh-book-001 b1", backward: true})
 
 			var bor Borrow
 			postBor := env.realbrUpdPosts[env.td.BorChannelId]
@@ -1441,7 +1568,7 @@ func TestWorkflowRevert(t *testing.T) {
 			inv.Id = ""
 			inv.Name = ""
 			inv.Relations = nil
-			assert.Equalf(t, step.result.inv, inv, "inventory should be same, at %v", wf[step.wfr.NextStepIndex].Status)
+			assert.Equalf(t, step.result.inv, inv, "inventory should be same, at %v", step.status)
 
 			if step.result.inv.Stock == 0 {
 				assert.Equalf(t, false, env.td.ABookPub.IsAllowedToBorrow, "should not be allowed to borrow")
@@ -1451,6 +1578,9 @@ func TestWorkflowRevert(t *testing.T) {
 				assert.Equalf(t, true, env.td.ABookPub.IsAllowedToBorrow, "should be allowed to borrow")
 				assert.Equalf(t, "", env.td.ABookPub.ReasonOfDisallowed, "should be cleared")
 			}
+
+			//ChosenCopyId Check
+			assert.Equalf(t, step.result.brq.ChosenCopyId, bor.DataOrImage.ChosenCopyId, "chosen id is not correct")
 
 			//Renew times check
 			assert.Equalf(t, step.result.renewTimes, bor.DataOrImage.RenewedTimes, "renew times is not correct")
@@ -1462,50 +1592,77 @@ func TestWorkflowRevert(t *testing.T) {
 
 		env := newWorkflowEnv()
 		env.td.ABookInv = &BookInventory{
-			Stock:       1,
-			TransmitOut: 0,
-			Lending:     0,
-			TransmitIn:  0,
+			Stock: 1,
+			Copies: BookCopies{
+				"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+			},
 		}
-
-		wf := env.td.EmptyWorkflow
+		env.td.ABookPri.CopyKeeperMap = map[string]Keeper{
+			"zzh-book-001 b1": {User: "kpuser1"},
+		}
 
 		//move to last initially
 		for _, status := range []string{
 			STATUS_CONFIRMED,
+			STATUS_KEEPER_CONFIRMED,
 		} {
-
-			wfrJson, _ := json.Marshal(WorkflowRequest{
-				ActorUser:     env.worker,
-				MasterPostKey: env.createdPid[env.td.BorChannelId],
-				NextStepIndex: _getIndexByStatus(status, wf),
-			})
-
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			env.plugin.ServeHTTP(nil, w, r)
+			performNext(t, env, status, false, performNextOption{chosen: "zzh-book-001 b1"})
 		}
 
 		env.td.ABookPub.IsAllowedToBorrow = false
 		env.td.ABookPub.ManuallyDisallowed = true
 
 		for _, status := range []string{
+			STATUS_CONFIRMED,
 			STATUS_REQUESTED,
 		} {
-
-			wfrJson, _ := json.Marshal(WorkflowRequest{
-				ActorUser:     env.worker,
-				MasterPostKey: env.createdPid[env.td.BorChannelId],
-				NextStepIndex: _getIndexByStatus(status, wf),
-				Backward:      true,
-			})
-
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			env.plugin.ServeHTTP(nil, w, r)
+			performNext(t, env, status, false, performNextOption{chosen: "zzh-book-001 b1", backward: true})
 		}
 		assert.Equalf(t, false, env.td.ABookPub.IsAllowedToBorrow, "still should not be allowed to borrow")
 		assert.Equalf(t, true, env.td.ABookPub.ManuallyDisallowed, "still should be true")
+	})
+
+	t.Run("revert through keeper_confirmed, restoring another keeper", func(t *testing.T) {
+
+		env := newWorkflowEnv()
+		env.td.ABookInv = &BookInventory{
+			Stock: 2,
+			Copies: BookCopies{
+				"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+				"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_INSTOCK},
+			},
+		}
+		env.td.ABookPri.CopyKeeperMap = map[string]Keeper{
+			"zzh-book-001 b1": {User: "kpuser1"},
+			"zzh-book-001 b2": {User: "kpuser2"},
+		}
+
+		oldKp2Post := env.realbrUpdPosts[env.td.Keeper2Id_botId]
+
+		//move to last initially
+		for _, status := range []string{
+			STATUS_CONFIRMED,
+			STATUS_KEEPER_CONFIRMED,
+		} {
+			performNext(t, env, status, false, performNextOption{chosen: "zzh-book-001 b1"})
+		}
+
+		env.createdPid[env.td.Keeper2Id_botId] = model.NewId()
+		for _, status := range []string{
+			STATUS_CONFIRMED,
+		} {
+			performNext(t, env, status, false, performNextOption{chosen: "zzh-book-001 b1", backward: true})
+		}
+
+		newKp2Post := env.realbrUpdPosts[env.td.Keeper2Id_botId]
+		assert.NotEqualf(t, newKp2Post.Id, oldKp2Post.Id, "2 keeper2'sid should not be equal")
+
+		masterPost := env.realbrUpdPosts[env.td.BorChannelId]
+
+		var br Borrow
+		json.Unmarshal([]byte(masterPost.Message), &br)
+		assert.Containsf(t, br.RelationKeys.Keepers, newKp2Post.Id, "new keeper2 should be in master's relation")
+
 	})
 }
 
@@ -1530,29 +1687,11 @@ func TestWorkflowLock(t *testing.T) {
 			},
 		})
 
-		td := env.td
-		// api := env.api
-		plugin := env.plugin
-
-		createdPid := env.createdPid
-
-		worker := env.worker
-
 		wgall.Add(3)
 
 		go func() {
 
-			req := WorkflowRequest{
-				MasterPostKey: createdPid[td.BorChannelId],
-				ActorUser:     worker,
-				NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
-			}
-
-			wfrJson, _ := json.Marshal(req)
-
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			plugin.ServeHTTP(nil, w, r)
+			performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
 			startNew <- struct{}{}
 			wgall.Done()
 		}()
@@ -1560,23 +1699,10 @@ func TestWorkflowLock(t *testing.T) {
 		go func() {
 			<-start
 
-			req := WorkflowRequest{
-				MasterPostKey: createdPid[td.BorChannelId],
-				ActorUser:     worker,
-				NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
-			}
+			performNext(t, env, STATUS_CONFIRMED, true, performNextOption{
+				chosen:       "zzh-book-001 b1",
+				errorMessage: "Failed to lock"})
 
-			wfrJson, _ := json.Marshal(req)
-
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			plugin.ServeHTTP(nil, w, r)
-
-			result := w.Result()
-			var resultObj *Result
-			json.NewDecoder(result.Body).Decode(&resultObj)
-			assert.Containsf(t, resultObj.Error, "Failed to lock", "should return lock message")
-			// api.AssertNumberOfCalls(t, "UpdatePost", 5)
 			end <- struct{}{}
 			wgall.Done()
 		}()
@@ -1584,23 +1710,8 @@ func TestWorkflowLock(t *testing.T) {
 		go func() {
 			<-startNew
 
-			req := WorkflowRequest{
-				MasterPostKey: createdPid[td.BorChannelId],
-				ActorUser:     worker,
-				NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
-			}
+			performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
 
-			wfrJson, _ := json.Marshal(req)
-
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			plugin.ServeHTTP(nil, w, r)
-
-			result := w.Result()
-			var resultObj Result
-			json.NewDecoder(result.Body).Decode(&resultObj)
-			assert.Equalf(t, resultObj.Error, "", "should normally end")
-			// api.AssertNumberOfCalls(t, "UpdatePost", 15)
 			wgall.Done()
 		}()
 
@@ -1618,7 +1729,7 @@ func TestWorkflowLock(t *testing.T) {
 
 		go func() {
 
-			_sendAndCheckATestWFRequest(t, env, STATUS_CONFIRMED, false)
+			performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
 
 			wait.Done()
 
@@ -1627,7 +1738,7 @@ func TestWorkflowLock(t *testing.T) {
 		go func() {
 			env.td.block1 <- struct{}{}
 
-			_sendAndCheckATestWFRequest(t, env, STATUS_CONFIRMED, true)
+			performNext(t, env, STATUS_CONFIRMED, true, performNextOption{})
 
 			assert.Equalf(t, 0, len(env.realbrUpdPosts), "should have no br update")
 			assert.Equalf(t, 0, len(env.td.RealBookPostUpd), "should have no book update")
@@ -1650,34 +1761,9 @@ func TestWorkflowLock(t *testing.T) {
 			},
 		})
 
-		_sendAndCheckATestWFRequest(t, env, STATUS_CONFIRMED, false)
+		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
 
 	})
-}
-
-func _sendAndCheckATestWFRequest(t *testing.T, env *workflowEnv, status string, assertError bool) {
-
-	req := WorkflowRequest{
-		MasterPostKey: env.createdPid[env.td.BorChannelId],
-		ActorUser:     env.worker,
-		NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
-	}
-
-	wfrJson, _ := json.Marshal(req)
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-	env.plugin.ServeHTTP(nil, w, r)
-
-	result := w.Result()
-	var resultObj Result
-	json.NewDecoder(result.Body).Decode(&resultObj)
-
-	if assertError {
-		assert.NotEmpty(t, resultObj.Error, "should have error")
-	} else {
-		assert.Empty(t, resultObj.Error, "should normally end")
-	}
 }
 
 func TestWorkflowRollback(t *testing.T) {
@@ -1692,8 +1778,6 @@ func TestWorkflowRollback(t *testing.T) {
 		})
 
 		td := env.td
-
-		plugin := env.plugin
 
 		var oldPosts map[string]*model.Post
 		DeepCopy(&oldPosts, &env.realbrUpdPosts)
@@ -1728,17 +1812,7 @@ func TestWorkflowRollback(t *testing.T) {
 			env.updErrCtrl = map[string]bool{}
 			env.updErrCtrl[test.chid] = true
 
-			req := WorkflowRequest{
-				MasterPostKey: env.createdPid[td.BorChannelId],
-				ActorUser:     env.worker,
-				NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
-			}
-
-			wfrJson, _ := json.Marshal(req)
-
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			plugin.ServeHTTP(nil, w, r)
+			performNext(t, env, STATUS_CONFIRMED, true, performNextOption{})
 
 			var oldBorrow Borrow
 			var newBorrow Borrow
@@ -1762,7 +1836,7 @@ func TestWorkflowRollback(t *testing.T) {
 		DeepCopy(&oldPosts, &env.realbrUpdPosts)
 
 		env.td.updateBookErr = true
-		_sendAndCheckATestWFRequest(t, env, STATUS_CONFIRMED, true)
+		performNext(t, env, STATUS_CONFIRMED, true, performNextOption{})
 
 		for _, oldpost := range oldPosts {
 			var oldBorrow Borrow
@@ -1772,6 +1846,76 @@ func TestWorkflowRollback(t *testing.T) {
 			json.Unmarshal([]byte(oldpost.Message), &oldBorrow)
 			assert.Equalf(t, oldBorrow, newBorrow, "all updates to br should be rollback")
 		}
+	})
+
+	t.Run("rollback create", func(t *testing.T) {
+
+		env := newWorkflowEnv()
+
+		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
+		performNext(t, env, STATUS_KEEPER_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1"})
+
+		var oldDelPosts map[string]string
+		DeepCopy(&oldDelPosts, &env.realbrDelPosts)
+
+		var oldPosts map[string]*model.Post
+		DeepCopy(&oldPosts, &env.realbrUpdPosts)
+
+		env.td.updateBorrowErr[env.td.BorChannelId] = true
+		newKeeper2PostId := model.NewId()
+		env.createdPid[env.td.Keeper2Id_botId] = newKeeper2PostId
+		env.chidByCreatedPid[newKeeper2PostId] = env.td.Keeper2Id_botId
+		performNext(t, env, STATUS_CONFIRMED, true, performNextOption{backward: true})
+
+		newDelPosts := env.realbrDelPosts
+		newPosts := env.realbrUpdPosts
+
+		assert.Equal(t, newDelPosts[env.td.Keeper2Id_botId], newPosts[env.td.Keeper2Id_botId].Id, "create id and delete id should be same")
+
+	})
+
+	t.Run("rollback delete", func(t *testing.T) {
+
+		env := newWorkflowEnv()
+
+		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
+
+		var oldPosts map[string]*model.Post
+		DeepCopy(&oldPosts, &env.realbrUpdPosts)
+
+		env.td.updateBorrowErr[env.td.BorChannelId] = true
+		env.createdPid_1[env.td.Keeper2Id_botId] = env.createdPid[env.td.Keeper2Id_botId]
+		newKeeper2PostId := model.NewId()
+		env.createdPid[env.td.Keeper2Id_botId] = newKeeper2PostId
+		env.chidByCreatedPid[newKeeper2PostId] = env.td.Keeper2Id_botId
+		performNext(t, env, STATUS_KEEPER_CONFIRMED, true, performNextOption{chosen: "zzh-book-001 b1"})
+
+		newPosts := env.realbrUpdPosts
+		newCreatedPosts := env.realbrPosts
+
+		assert.NotEqualf(t, newCreatedPosts[env.td.Keeper2Id_botId].Id, oldPosts[env.td.Keeper2Id_botId].Id, "should create a new keeper post")
+
+		var newKeeper2Borrow Borrow
+		json.Unmarshal([]byte(newPosts[env.td.Keeper2Id_botId].Message), &newKeeper2Borrow)
+		var oldKeeper2Borrow Borrow
+		json.Unmarshal([]byte(oldPosts[env.td.Keeper2Id_botId].Message), &oldKeeper2Borrow)
+
+		assert.Equal(t, newKeeper2Borrow, oldKeeper2Borrow, "rollbacked keeper borrow should be same")
+
+		var oldMasterBorrow Borrow
+		json.Unmarshal([]byte(oldPosts[env.td.BorChannelId].Message), &oldMasterBorrow)
+
+		var newMasterBorrow Borrow
+		json.Unmarshal([]byte(newPosts[env.td.BorChannelId].Message), &newMasterBorrow)
+
+		assert.Equal(t, 2, len(newMasterBorrow.RelationKeys.Keepers), "2 keepers")
+		assert.Contains(t, newMasterBorrow.RelationKeys.Keepers, env.createdPid[env.td.Keeper1Id_botId], "keeper1 should be in master")
+		assert.Contains(t, newMasterBorrow.RelationKeys.Keepers, env.createdPid[env.td.Keeper2Id_botId], "new keeper2 should be in master")
+
+		newMasterBorrow.RelationKeys.Keepers = nil
+		oldMasterBorrow.RelationKeys.Keepers = nil
+		assert.Equal(t, newMasterBorrow, oldMasterBorrow, "the rest master borrow should be same")
+
 	})
 
 }
@@ -1922,31 +2066,14 @@ func TestWorkflowRenewTimes(t *testing.T) {
 		env := newWorkflowEnv()
 		env.plugin.maxRenewTimes = 1
 
-		wfrJson, _ := json.Marshal(WorkflowRequest{
-			ActorUser:     env.worker,
-			MasterPostKey: env.createdPid[env.td.BorChannelId],
-			NextStepIndex: _getIndexByStatus(STATUS_CONFIRMED, env.td.EmptyWorkflow),
-		})
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-		env.plugin.ServeHTTP(nil, w, r)
-
 		for _, status := range []string{
-                        STATUS_KEEPER_CONFIRMED,
+			STATUS_CONFIRMED,
+			STATUS_KEEPER_CONFIRMED,
 			STATUS_DELIVIED,
 			STATUS_RENEW_REQUESTED,
 			STATUS_RENEW_CONFIRMED,
 		} {
-			wfrJson, _ := json.Marshal(WorkflowRequest{
-				ActorUser:     env.worker,
-				MasterPostKey: env.createdPid[env.td.BorChannelId],
-				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
-			})
-
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			env.plugin.ServeHTTP(nil, w, r)
+			performNext(t, env, status, false, performNextOption{chosen: "zzh-book-001 b1"})
 		}
 
 		var bor Borrow
@@ -1954,24 +2081,14 @@ func TestWorkflowRenewTimes(t *testing.T) {
 		json.Unmarshal([]byte(postBor.Message), &bor)
 		assert.Equalf(t, 1, bor.DataOrImage.RenewedTimes, "renewed times should be 1")
 
-		wfrJson, _ = json.Marshal(WorkflowRequest{
-			ActorUser:     env.worker,
-			MasterPostKey: env.createdPid[env.td.BorChannelId],
-			NextStepIndex: _getIndexByStatus(STATUS_RENEW_REQUESTED, env.td.EmptyWorkflow),
-		})
-
-		w = httptest.NewRecorder()
-		r = httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-
 		var oldPosts map[string]*model.Post
 		DeepCopy(&oldPosts, &env.realbrUpdPosts)
 
-		env.plugin.ServeHTTP(nil, w, r)
-		assert.Equalf(t, oldPosts, env.realbrUpdPosts, "should be no updated")
+		performNext(t, env, STATUS_RENEW_REQUESTED, true, performNextOption{
+			chosen:       "zzh-book-001 b1",
+			errorMessage: ErrRenewLimited.Error()})
 
-		res := new(Result)
-		json.NewDecoder(w.Result().Body).Decode(&res)
-		assert.Equalf(t, ErrRenewLimited.Error(), res.Error, "renew error")
+		assert.Equalf(t, oldPosts, env.realbrUpdPosts, "should be no updated")
 
 	})
 
@@ -1982,24 +2099,13 @@ func TestWorkflowRenewTimes(t *testing.T) {
 
 		for _, status := range []string{
 			STATUS_CONFIRMED,
-                        STATUS_KEEPER_CONFIRMED,
+			STATUS_KEEPER_CONFIRMED,
 			STATUS_DELIVIED,
 			STATUS_RENEW_REQUESTED,
 			STATUS_RENEW_CONFIRMED,
 			STATUS_RENEW_REQUESTED,
 		} {
-			wfrJson, _ := json.Marshal(WorkflowRequest{
-				ActorUser:     env.worker,
-				MasterPostKey: env.createdPid[env.td.BorChannelId],
-				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
-			})
-
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			env.plugin.ServeHTTP(nil, w, r)
-			res := new(Result)
-			json.NewDecoder(w.Result().Body).Decode(&res)
-			assert.Equalf(t, "", res.Error, "should be no error")
+			performNext(t, env, status, false, performNextOption{chosen: "zzh-book-001 b1"})
 		}
 
 		var bor Borrow
@@ -2017,33 +2123,16 @@ func TestWorkflowRenewTimes(t *testing.T) {
 
 		for _, status := range []string{
 			STATUS_CONFIRMED,
-                        STATUS_KEEPER_CONFIRMED,
+			STATUS_KEEPER_CONFIRMED,
 			STATUS_DELIVIED,
 			STATUS_RENEW_REQUESTED,
 			STATUS_RENEW_CONFIRMED,
 			STATUS_RETURN_REQUESTED,
 		} {
-			wfrJson, _ := json.Marshal(WorkflowRequest{
-				ActorUser:     env.worker,
-				MasterPostKey: env.createdPid[env.td.BorChannelId],
-				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
-			})
-
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			env.plugin.ServeHTTP(nil, w, r)
+			performNext(t, env, status, false, performNextOption{chosen: "zzh-book-001 b1"})
 		}
 
-		wfrJson, _ := json.Marshal(WorkflowRequest{
-			ActorUser:     env.worker,
-			MasterPostKey: env.createdPid[env.td.BorChannelId],
-			NextStepIndex: _getIndexByStatus(STATUS_RENEW_CONFIRMED, env.td.EmptyWorkflow),
-			Backward:      true,
-		})
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-		env.plugin.ServeHTTP(nil, w, r)
+		performNext(t, env, STATUS_RENEW_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1", backward: true})
 
 		var bor Borrow
 		postBor := env.realbrUpdPosts[env.td.BorChannelId]
@@ -2055,6 +2144,11 @@ func TestWorkflowRenewTimes(t *testing.T) {
 }
 
 func TestWorkflowJump(t *testing.T) {
+	//------------------------------
+	//Jump doesn't mean revert
+	//just make a possibility
+	//and test the worflow clearning logic
+	//------------------------------
 
 	t.Run("forward cyclic jump", func(t *testing.T) {
 
@@ -2068,7 +2162,7 @@ func TestWorkflowJump(t *testing.T) {
 
 		for _, status := range []string{
 			STATUS_CONFIRMED,
-                        STATUS_KEEPER_CONFIRMED,
+			STATUS_KEEPER_CONFIRMED,
 			STATUS_DELIVIED,
 			STATUS_RENEW_REQUESTED,
 			STATUS_RENEW_CONFIRMED,
@@ -2077,18 +2171,7 @@ func TestWorkflowJump(t *testing.T) {
 			STATUS_RETURNED,
 			STATUS_REQUESTED,
 		} {
-			wfrJson, _ := json.Marshal(WorkflowRequest{
-				ActorUser:     env.worker,
-				MasterPostKey: env.createdPid[env.td.BorChannelId],
-				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
-			})
-
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			env.plugin.ServeHTTP(nil, w, r)
-			res := new(Result)
-			json.NewDecoder(w.Result().Body).Decode(&res)
-			assert.Equalf(t, "", res.Error, "should be no error")
+			performNext(t, env, status, false, performNextOption{chosen: "zzh-book-001 b1"})
 		}
 
 		postBor = env.realbrUpdPosts[env.td.BorChannelId]
@@ -2134,24 +2217,11 @@ func TestWorkflowJump(t *testing.T) {
 
 		for _, status := range []string{
 			STATUS_CONFIRMED,
-                        STATUS_KEEPER_CONFIRMED,
+			STATUS_KEEPER_CONFIRMED,
 			STATUS_DELIVIED,
 			STATUS_REQUESTED,
 		} {
-
-			wfrJson, _ := json.Marshal(WorkflowRequest{
-				ActorUser:     env.worker,
-				MasterPostKey: env.createdPid[env.td.BorChannelId],
-				NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
-				Backward:      true,
-			})
-
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-			env.plugin.ServeHTTP(nil, w, r)
-			res := new(Result)
-			json.NewDecoder(w.Result().Body).Decode(&res)
-			assert.Equalf(t, "", res.Error, "should be no error")
+			performNext(t, env, status, false, performNextOption{chosen: "zzh-book-001 b1", backward: true})
 		}
 
 		postBor = env.realbrUpdPosts[env.td.BorChannelId]
@@ -2163,6 +2233,46 @@ func TestWorkflowJump(t *testing.T) {
 	})
 }
 
+type updatedBorrowCallback struct {
+	master    func(br *Borrow)
+	libworker func(br *Borrow)
+	borrower  func(br *Borrow)
+	keeper1   func(br *Borrow)
+	keeper2   func(br *Borrow)
+}
+
+func getUpdatedBorrows(env *workflowEnv, cb updatedBorrowCallback) {
+
+	if cb.master != nil {
+		var borrow Borrow
+		json.Unmarshal([]byte(env.realbrUpdPosts[env.td.BorChannelId].Message), &borrow)
+		cb.master(&borrow)
+	}
+
+	if cb.libworker != nil {
+		var borrow Borrow
+		json.Unmarshal([]byte(env.realbrUpdPosts[env.worker_botId].Message), &borrow)
+		cb.libworker(&borrow)
+	}
+
+	if cb.borrower != nil {
+		var borrow Borrow
+		json.Unmarshal([]byte(env.realbrUpdPosts[env.td.BorId_botId].Message), &borrow)
+		cb.borrower(&borrow)
+	}
+
+	if cb.keeper1 != nil {
+		var borrow Borrow
+		json.Unmarshal([]byte(env.realbrUpdPosts[env.td.Keeper1Id_botId].Message), &borrow)
+		cb.borrower(&borrow)
+	}
+
+	if cb.keeper2 != nil {
+		var borrow Borrow
+		json.Unmarshal([]byte(env.realbrUpdPosts[env.td.Keeper2Id_botId].Message), &borrow)
+		cb.borrower(&borrow)
+	}
+}
 func TestWorkflowBorrowDelete(t *testing.T) {
 	logSwitch = true
 	_ = fmt.Println
@@ -2190,9 +2300,9 @@ func TestWorkflowBorrowDelete(t *testing.T) {
 		}
 	}
 
-	performDelete := func(env *workflowEnv, assertError bool) {
+	performDelete := func(env *workflowEnv, status string, assertError bool) {
 		wfrJson, _ := json.Marshal(WorkflowRequest{
-			ActorUser:     env.worker,
+			ActorUser:     getActor(env, status),
 			MasterPostKey: env.createdPid[env.td.BorChannelId],
 			Delete:        true,
 		})
@@ -2211,35 +2321,11 @@ func TestWorkflowBorrowDelete(t *testing.T) {
 		}
 	}
 
-	performNext := func(env *workflowEnv, status string, assertError bool) {
-
-		req := WorkflowRequest{
-			MasterPostKey: env.createdPid[env.td.BorChannelId],
-			ActorUser:     env.worker,
-			NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
-		}
-
-		wfrJson, _ := json.Marshal(req)
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/workflow", bytes.NewReader(wfrJson))
-		env.plugin.ServeHTTP(nil, w, r)
-
-		res := new(Result)
-		json.NewDecoder(w.Result().Body).Decode(&res)
-
-		if assertError {
-			require.NotEmptyf(t, res.Error, "response should has error. err:%v", res.Error)
-		} else {
-			require.Emptyf(t, res.Error, "response should not has error. err:%v", res.Error)
-		}
-	}
-
 	t.Run("all steps test.", func(t *testing.T) {
 
 		env := newEnv()
 
-		performDelete(env.workflowEnv, false)
+		performDelete(env.workflowEnv, STATUS_REQUESTED, false)
 
 		for _, step := range []struct {
 			status      string
@@ -2249,7 +2335,7 @@ func TestWorkflowBorrowDelete(t *testing.T) {
 				STATUS_CONFIRMED,
 				false,
 			},
-                        {
+			{
 				STATUS_KEEPER_CONFIRMED,
 				false,
 			},
@@ -2278,9 +2364,9 @@ func TestWorkflowBorrowDelete(t *testing.T) {
 				false,
 			},
 		} {
-			performNext(env.workflowEnv, step.status, false)
+			performNext(t, env.workflowEnv, step.status, false, performNextOption{chosen: "zzh-book-001 b1"})
 
-			performDelete(env.workflowEnv, step.assertError)
+			performDelete(env.workflowEnv, step.status, step.assertError)
 		}
 
 	})
@@ -2296,20 +2382,18 @@ func TestWorkflowBorrowDelete(t *testing.T) {
 
 		env := newEnv()
 		env.td.ABookInv = &BookInventory{
-			Stock:       1,
-			TransmitOut: 0,
-			Lending:     0,
-			TransmitIn:  0,
+			Stock: 1,
+			Copies: BookCopies{
+				"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+			},
 		}
-		performNext(env.workflowEnv, STATUS_CONFIRMED, false)
+		performNext(t, env.workflowEnv, STATUS_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1"})
 		inv := getInv(env.workflowEnv)
-		assert.Equalf(t, 0, inv.Stock, "stock")
-		assert.Equalf(t, "无库存", env.td.ABookPub.ReasonOfDisallowed, "reason should be set")
-		assert.Equalf(t, 1, inv.TransmitOut, "stock")
-		performDelete(env.workflowEnv, false)
+		assert.Equalf(t, 1, inv.Stock, "stock")
+		assert.Equalf(t, "", env.td.ABookPub.ReasonOfDisallowed, "reason should be set")
+		performDelete(env.workflowEnv, STATUS_CONFIRMED, false)
 		inv = getInv(env.workflowEnv)
 		assert.Equalf(t, 1, inv.Stock, "stock")
-		assert.Equalf(t, 0, inv.TransmitOut, "stock")
 		assert.Equalf(t, true, env.td.ABookPub.IsAllowedToBorrow, "stock should be available")
 		assert.Equalf(t, "", env.td.ABookPub.ReasonOfDisallowed, "reason should be cleared")
 	})
@@ -2325,34 +2409,55 @@ func TestWorkflowBorrowDelete(t *testing.T) {
 
 		env := newEnv()
 		env.td.ABookInv = &BookInventory{
-			Stock:       1,
-			TransmitOut: 0,
-			Lending:     0,
-			TransmitIn:  0,
+			Stock: 1,
+			Copies: BookCopies{
+				"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+			},
 		}
-		performNext(env.workflowEnv, STATUS_CONFIRMED, false)
-		performNext(env.workflowEnv, STATUS_KEEPER_CONFIRMED, false)
-		performDelete(env.workflowEnv, false)
-                inv := getInv(env.workflowEnv)
+		performNext(t, env.workflowEnv, STATUS_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1"})
+		performNext(t, env.workflowEnv, STATUS_KEEPER_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1"})
+		performDelete(env.workflowEnv, STATUS_KEEPER_CONFIRMED, false)
+
+		inv := getInv(env.workflowEnv)
 		assert.Equalf(t, 1, inv.Stock, "stock")
 		assert.Equalf(t, 0, inv.TransmitOut, "stock")
 		assert.Equalf(t, true, env.td.ABookPub.IsAllowedToBorrow, "stock should be available")
 		assert.Equalf(t, "", env.td.ABookPub.ReasonOfDisallowed, "reason should be cleared")
+		assert.Equalf(t, COPY_STATUS_INSTOCK, inv.Copies["zzh-book-001 b1"].Status, "should return to instock")
+		//no need for deletion
+		// getUpdatedBorrows(env.workflowEnv, updatedBorrowCallback{
+		// 	master: func(br *Borrow) {
+		// 		assert.Emptyf(t, br.DataOrImage.ChosenCopyId, "master's chosen id should empty")
+		// 	},
+		// 	libworker: func(br *Borrow) {
+		// 		assert.Emptyf(t, br.DataOrImage.ChosenCopyId, "libworker's chosen id should empty")
+		// 	},
+		// 	borrower: func(br *Borrow) {
+		// 		assert.Emptyf(t, br.DataOrImage.ChosenCopyId, "borrower's chosen id should empty")
+		// 	},
+		// 	keeper1: func(br *Borrow) {
+		// 		assert.Emptyf(t, br.DataOrImage.ChosenCopyId, "keeper1's chosen id should empty")
+		// 	},
+		// 	keeper2: func(br *Borrow) {
+		// 		assert.Emptyf(t, br.DataOrImage.ChosenCopyId, "keeper2's chosen id should empty")
+		// 	},
+		// })
 	})
 
 	t.Run("delete, not toggling", func(t *testing.T) {
 
 		env := newEnv()
 		env.td.ABookInv = &BookInventory{
-			Stock:       1,
-			TransmitOut: 0,
-			Lending:     0,
-			TransmitIn:  0,
+			Stock: 1,
+			Copies: BookCopies{
+				"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+			},
 		}
 		env.td.ABookPub.IsAllowedToBorrow = false
 		env.td.ABookPub.ManuallyDisallowed = true
-		performNext(env.workflowEnv, STATUS_CONFIRMED, false)
-		performDelete(env.workflowEnv, false)
+		performNext(t, env.workflowEnv, STATUS_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1"})
+		performNext(t, env.workflowEnv, STATUS_KEEPER_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1"})
+		performDelete(env.workflowEnv, STATUS_KEEPER_CONFIRMED, false)
 		assert.Equalf(t, false, env.td.ABookPub.IsAllowedToBorrow, "stock should be still not available")
 		assert.Equalf(t, true, env.td.ABookPub.ManuallyDisallowed, "manually disallowed should be changed")
 	})
@@ -2380,9 +2485,9 @@ func TestWorkflowBorrowDelete(t *testing.T) {
 			env.realbrDelPostsSeq = []string{}
 
 			if channelId == env.td.BorChannelId {
-				performDelete(env.workflowEnv, true)
+				performDelete(env.workflowEnv, STATUS_REQUESTED, true)
 			} else {
-				performDelete(env.workflowEnv, false)
+				performDelete(env.workflowEnv, STATUS_REQUESTED, false)
 			}
 
 			if channelId == env.td.BorChannelId {
@@ -2399,11 +2504,73 @@ func TestWorkflowBorrowDelete(t *testing.T) {
 
 	t.Run("delete sequence", func(t *testing.T) {
 		env := newEnv()
-		performDelete(env.workflowEnv, false)
+		performDelete(env.workflowEnv, STATUS_REQUESTED, false)
 		seqLen := len(env.realbrDelPostsSeq)
 		assert.Equalf(t, env.createdPid[env.td.BorChannelId], env.realbrDelPostsSeq[seqLen-1], "last should be borrow channel")
 		assert.Equalf(t, env.createdPid[env.worker_botId], env.realbrDelPostsSeq[seqLen-2], "last second should be borrow channel")
 
 	})
 
+}
+
+func TestMultiRoles(t *testing.T) {
+
+	t.Run("keeper confirmed", func(t *testing.T) {
+
+		env := newWorkflowEnv(injectOpt{
+			bookInjectOpt: &bookInjectOptions{
+				keepersAsLibworkers: true,
+			},
+		})
+
+		getUpdatedBorrows(env, updatedBorrowCallback{
+			master: func(br *Borrow) {
+				assert.Containsf(t, br.RelationKeys.Keepers, env.createdPid[env.worker_botId], "should contains work post id")
+			},
+		})
+
+		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
+		//the actor keeper won't be the worker, but the keeper(worker) shouldn't be deleted
+		performNext(t, env, STATUS_KEEPER_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1"})
+		assert.Equalf(t, 0, len(env.realbrDelPosts[env.worker_botId]), "keeper should not be deleted.")
+
+		getUpdatedBorrows(env, updatedBorrowCallback{
+			master: func(br *Borrow) {
+				assert.Equalf(t, 1, len(br.RelationKeys.Keepers), "keeper relation should be deleted")
+				assert.NotContainsf(t, br.RelationKeys.Keepers, env.createdPid[env.worker_botId], "should not contains work post id")
+			},
+		})
+
+	})
+
+	t.Run("keeper confirmed back", func(t *testing.T) {
+
+		env := newWorkflowEnv(injectOpt{
+			bookInjectOpt: &bookInjectOptions{
+				keepersAsLibworkers: true,
+			},
+		})
+
+		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
+		//the actor keeper won't be the worker, but the keeper(worker) shouldn't be deleted
+		performNext(t, env, STATUS_KEEPER_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1"})
+
+		getUpdatedBorrows(env, updatedBorrowCallback{
+			master: func(br *Borrow) {
+				assert.NotContainsf(t, br.RelationKeys.Keepers, env.createdPid[env.worker_botId], "should not contains work post id")
+			},
+		})
+		env.realbrPosts[env.worker_botId] = nil
+		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1", backward: true})
+
+		assert.Emptyf(t, env.realbrPosts[env.worker_botId], "should not create keeper")
+
+		getUpdatedBorrows(env, updatedBorrowCallback{
+			master: func(br *Borrow) {
+				assert.Equalf(t, 2, len(br.RelationKeys.Keepers), "keeper relation should be appended")
+				assert.Containsf(t, br.RelationKeys.Keepers, env.createdPid[env.worker_botId], "should contains work post id")
+			},
+		})
+
+	})
 }

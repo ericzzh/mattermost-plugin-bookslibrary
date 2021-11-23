@@ -107,12 +107,7 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 	created = append(created, mp)
 
 	//post a borrowerPost
-	roleByUser := map[string][]string{}
-	roleByUser[borrowRequestMaster.BorrowerUser] = append(roleByUser[borrowRequestMaster.BorrowerUser], BORROWER)
-	roleByUser[borrowRequestMaster.LibworkerUser] = append(roleByUser[borrowRequestMaster.LibworkerUser], LIBWORKER)
-	for _, kp := range borrowRequestMaster.KeeperUsers {
-		roleByUser[kp] = append(roleByUser[kp], KEEPER)
-	}
+	roleByUser := p._getRoleByUser(borrowRequestMaster)
 
 	postByRole := map[string][]*model.Post{}
 	postByUser := map[string]*model.Post{}
@@ -139,7 +134,12 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 			resp, _ := json.Marshal(Result{
 				Error: fmt.Sprintf("Failed to post to role: %v, user: %v.", strings.Join(roles, ","), user),
 			})
-			p._rollBackCreated(created)
+			if err := p._rollBackCreated(created); err != nil {
+				p.API.LogError("Fatal Error: Failed to post and rollback error.", "roles", strings.Join(roles, ","), "user", user, "err", fmt.Sprintf("%+v", err))
+				resp, _ = json.Marshal(Result{
+					Error: fmt.Sprintf("Fatal Error: Failed to post to role: %v, user: %v and rollback error.", strings.Join(roles, ","), user),
+				})
+			}
 			w.Write(resp)
 			return
 
@@ -175,7 +175,12 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 		resp, _ := json.Marshal(Result{
 			Error: "Failed to update master record's relationships.",
 		})
-		p._rollBackCreated(created)
+		if err := p._rollBackCreated(created); err != nil {
+			p.API.LogError("Fatal Error: Failed to update master record's relationships. and rollback error", "role", MASTER, "err", fmt.Sprintf("%+v", err))
+			resp, _ = json.Marshal(Result{
+				Error: "Fatal Error: Failed to update master record's relationships, and rollback error",
+			})
+		}
 		w.Write(resp)
 		return
 
@@ -193,7 +198,13 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 			resp, _ := json.Marshal(Result{
 				Error: "Failed to update relationships.",
 			})
-			p._rollBackCreated(created)
+			if err := p._rollBackCreated(created); err != nil {
+				p.API.LogError("Fatal Error: Failed to update relationships and rollback error.",
+					"role", strings.Join(roleByUser[user], ","), "user", user, "err", fmt.Sprintf("%+v", err))
+				resp, _ = json.Marshal(Result{
+					Error: "Fatal Error: Failed to update relationships and rollback error.",
+				})
+			}
 			w.Write(resp)
 			return
 		}
@@ -207,6 +218,29 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 
 }
 
+func (p *Plugin) _getRoleByUser(borrowRequestMaster *BorrowRequest) map[string][]string {
+	roleByUser := map[string][]string{}
+	roleByUser[borrowRequestMaster.BorrowerUser] = append(roleByUser[borrowRequestMaster.BorrowerUser], BORROWER)
+	roleByUser[borrowRequestMaster.LibworkerUser] = append(roleByUser[borrowRequestMaster.LibworkerUser], LIBWORKER)
+	for _, kp := range borrowRequestMaster.KeeperUsers {
+		roleByUser[kp] = append(roleByUser[kp], KEEPER)
+	}
+	return roleByUser
+}
+
+func (p *Plugin) _getBotDirectChannel(user string) (*model.Channel, error) {
+	userInfo, err := p.API.GetUserByUsername(user)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to find a user. user %v", user)
+	}
+
+	directChannel, err := p.API.GetDirectChannel(userInfo.Id, p.botID)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to find or create a direct channel with user. user: %v", user)
+	}
+
+	return directChannel, nil
+}
 func (p *Plugin) _makeAndSendBorrowRequest(user string, channelId string, role []string, borrowRequest *BorrowRequest) (*Borrow, *model.Post, error) {
 
 	var borrow Borrow
@@ -220,14 +254,11 @@ func (p *Plugin) _makeAndSendBorrowRequest(user string, channelId string, role [
 	// }
 
 	if user != "" {
-		userInfo, err := p.API.GetUserByUsername(user)
-		if err != nil {
-			return nil, nil, errors.Wrapf(err, "Failed to find a user. role: %v, user %v", role, user)
-		}
 
-		directChannel, err := p.API.GetDirectChannel(userInfo.Id, p.botID)
+		directChannel, err := p._getBotDirectChannel(user)
+
 		if err != nil {
-			return nil, nil, errors.Wrapf(err, "Failed to find or create a direct channel with user. role: %v, user: %v", role, user)
+			return nil, nil, errors.Wrapf(err, "Failed to get bot direct channel. role: %v, user %v", role, user)
 		}
 
 		channelId = directChannel.Id
@@ -249,10 +280,14 @@ func (p *Plugin) _makeAndSendBorrowRequest(user string, channelId string, role [
 	return &borrow, post, nil
 }
 
-func (p *Plugin) _rollBackCreated(posts []*model.Post) {
+func (p *Plugin) _rollBackCreated(posts []*model.Post) error {
 	for _, post := range posts {
-		p.API.DeletePost(post.Id)
+		if appErr := p.API.DeletePost(post.Id); appErr != nil {
+			return appErr
+		}
 	}
+
+	return nil
 }
 
 func (p *Plugin) _updateRelations(post *model.Post, relations RelationKeys, borrow *Borrow) error {
@@ -348,7 +383,12 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 	}
 
 	bq.Worflow = p._createWFTemplate(otherData.processTime)
-	p._setTags(STATUS_REQUESTED, bq)
+	p._setStatusTag(STATUS_REQUESTED, bq)
+
+	if masterBr != nil && masterBr.ChosenCopyId != "" {
+		bq.Tags = append(bq.Tags, TAG_PREFIX_COPYID+p._convertChosenCopyIdToTag(masterBr.ChosenCopyId))
+
+	}
 
 	bq.StepIndex = 0
 
@@ -375,7 +415,31 @@ func (p *Plugin) _distributeWorker(libworkers []string) string {
 	return libworkers[who]
 }
 
-func (p *Plugin) _setTags(status string, br *BorrowRequest) {
+func (p *Plugin) _convertChosenCopyIdToTag(chosen string) string {
+	spilt := strings.Split(chosen, " ")
+	return strings.Join(spilt, "_")
+}
+
+func (p *Plugin) _resetMasterTags(bq *BorrowRequest) {
+	bq.Tags = []string{}
+
+	bq.Tags = append(bq.Tags, []string{
+		TAG_PREFIX_BORROWER + bq.BorrowerUser,
+	}...)
+	bq.Tags = append(bq.Tags, []string{
+		TAG_PREFIX_LIBWORKER + bq.LibworkerUser,
+	}...)
+	for _, k := range bq.KeeperUsers {
+		bq.Tags = append(bq.Tags, TAG_PREFIX_KEEPER+k)
+	}
+	p._setStatusTag(bq.Worflow[bq.StepIndex].Status, bq)
+
+	if bq.ChosenCopyId != "" {
+		bq.Tags = append(bq.Tags, TAG_PREFIX_COPYID+p._convertChosenCopyIdToTag(bq.ChosenCopyId))
+	}
+}
+
+func (p *Plugin) _setStatusTag(status string, br *BorrowRequest) {
 
 	stag := TAG_PREFIX_STATUS + status
 
@@ -418,8 +482,8 @@ func (p *Plugin) _createWFTemplate(prt int64) []Step {
 				MASTER, BORROWER, LIBWORKER, KEEPER,
 			},
 			LastActualStepIndex: -1,
-		}, 
-                {
+		},
+		{
 			WorkflowType:  WORKFLOW_BORROW,
 			Status:        STATUS_KEEPER_CONFIRMED,
 			ActorRole:     BORROWER,

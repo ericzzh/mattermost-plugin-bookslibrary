@@ -21,6 +21,28 @@
         "stock":2,
         "transmit_out":0,
         "lending":0,
-        "transmit_in":0
+        "transmit_in":0,
+        "copy_keeper_map":{
+            "zzh-book-001 b1":{
+                "user":"zhangzhehuan"
+            },
+            "zzh-book-001 b2":{
+                "user":"zhangzhehuan"
+            },
+            "zzh-book-001 b3":{
+                "user":"zhangzhehuan"
+            }
+        },
+        "copies":{
+            "zzh-book-001 b1":{
+                "status":"in_stock"
+            },
+            "zzh-book-001 b2":{
+                "status":"in_stock"
+            },
+            "zzh-book-001 b3":{
+                "status":"in_stock"
+            }
+        }
   }
 ]

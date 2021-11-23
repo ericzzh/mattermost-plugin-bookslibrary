@@ -89,9 +89,27 @@ func TestBooks(t *testing.T) {
 			},
 			&BookPrivate{
 				KeeperUsers: []string{"kpuser1", "kpuser2"},
+				CopyKeeperMap: map[string]Keeper{
+					"zzh-book-001 b1": {User: "kpuser1"},
+					"zzh-book-001 b2": {User: "kpuser1"},
+					"zzh-book-001 b3": {User: "kpuser1"},
+					"zzh-book-001 b4": {User: "kpuser1"},
+					"zzh-book-001 b5": {User: "kpuser2"},
+					"zzh-book-001 b6": {User: "kpuser2"},
+					"zzh-book-001 b7": {User: "kpuser2"},
+				},
 			},
 			&BookInventory{
 				Stock: 7,
+				Copies: BookCopies{
+					"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-001 b3": BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-001 b4": BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-001 b5": BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-001 b6": BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-001 b7": BookCopy{Status: COPY_STATUS_INSTOCK},
+				},
 			},
 			nil,
 		},
@@ -117,9 +135,33 @@ func TestBooks(t *testing.T) {
 			&BookPrivate{
 				KeeperUsers: []string{"kpuser1", "kpuser2"},
 				KeeperNames: []string{"kpname1", "kpname2"},
+				CopyKeeperMap: map[string]Keeper{
+					"zzh-book-002 b1":  {User: "kpuser1"},
+					"zzh-book-002 b2":  {User: "kpuser1"},
+					"zzh-book-002 b3":  {User: "kpuser1"},
+					"zzh-book-002 b4":  {User: "kpuser1"},
+					"zzh-book-002 b5":  {User: "kpuser1"},
+					"zzh-book-002 b6":  {User: "kpuser2"},
+					"zzh-book-002 b7":  {User: "kpuser2"},
+					"zzh-book-002 b8":  {User: "kpuser2"},
+					"zzh-book-002 b9":  {User: "kpuser2"},
+					"zzh-book-002 b10": {User: "kpuser2"},
+				},
 			},
 			&BookInventory{
 				Stock: 10,
+				Copies: BookCopies{
+					"zzh-book-002 b1":  BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-002 b2":  BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-002 b3":  BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-002 b4":  BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-002 b5":  BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-002 b6":  BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-002 b7":  BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-002 b8":  BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-002 b9":  BookCopy{Status: COPY_STATUS_INSTOCK},
+					"zzh-book-002 b10": BookCopy{Status: COPY_STATUS_INSTOCK},
+				},
 			},
 			nil,
 		},
@@ -134,6 +176,16 @@ func TestBooks(t *testing.T) {
 	}
 
 	reqJson, _ := json.Marshal(req)
+
+	sendARequestAndCheck := func(t *testing.T, bq BooksRequest, assertError bool, expMessages map[string]BooksMessage) {
+
+		reqJson, _ := json.Marshal(bq)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/books", bytes.NewReader(reqJson))
+		// fmt.Println(string(reqJson))
+		plugin.ServeHTTP(nil, w, r)
+		_checkBookMessageResult(t, w, assertError, expMessages)
+	}
 
 	// fmt.Println(string(reqJson))
 
@@ -175,6 +227,15 @@ func TestBooks(t *testing.T) {
 					KeeperNames: []string{
 						"kpname1", "kpname2",
 					},
+					CopyKeeperMap: map[string]Keeper{
+						"zzh-book-001 b1": {User: "kpuser1"},
+						"zzh-book-001 b2": {User: "kpuser1"},
+						"zzh-book-001 b3": {User: "kpuser1"},
+						"zzh-book-001 b4": {User: "kpuser1"},
+						"zzh-book-001 b5": {User: "kpuser2"},
+						"zzh-book-001 b6": {User: "kpuser2"},
+						"zzh-book-001 b7": {User: "kpuser2"},
+					},
 					Relations: Relations{
 						REL_BOOK_PUBLIC: booksPids[0]["pub_id"],
 					},
@@ -186,6 +247,15 @@ func TestBooks(t *testing.T) {
 					TransmitOut: 2,
 					Lending:     1,
 					TransmitIn:  1,
+					Copies: BookCopies{
+						"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_TRANSIN},
+						"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_LENDING},
+						"zzh-book-001 b3": BookCopy{Status: COPY_STATUS_TRANSOUT},
+						"zzh-book-001 b4": BookCopy{Status: COPY_STATUS_TRANSOUT},
+						"zzh-book-001 b5": BookCopy{Status: COPY_STATUS_INSTOCK},
+						"zzh-book-001 b6": BookCopy{Status: COPY_STATUS_INSTOCK},
+						"zzh-book-001 b7": BookCopy{Status: COPY_STATUS_INSTOCK},
+					},
 					Relations: Relations{
 						REL_BOOK_PUBLIC: booksPids[0]["pub_id"],
 					},
@@ -226,6 +296,18 @@ func TestBooks(t *testing.T) {
 					Name:        "a second test book",
 					KeeperUsers: []string{"kpuser1", "kpuser2"},
 					KeeperNames: []string{"kpname1", "kpname2"},
+					CopyKeeperMap: map[string]Keeper{
+						"zzh-book-002 b1":  {User: "kpuser1"},
+						"zzh-book-002 b2":  {User: "kpuser1"},
+						"zzh-book-002 b3":  {User: "kpuser1"},
+						"zzh-book-002 b4":  {User: "kpuser1"},
+						"zzh-book-002 b5":  {User: "kpuser1"},
+						"zzh-book-002 b6":  {User: "kpuser2"},
+						"zzh-book-002 b7":  {User: "kpuser2"},
+						"zzh-book-002 b8":  {User: "kpuser2"},
+						"zzh-book-002 b9":  {User: "kpuser2"},
+						"zzh-book-002 b10": {User: "kpuser2"},
+					},
 					Relations: Relations{
 						REL_BOOK_PUBLIC: booksPids[1]["pub_id"],
 					},
@@ -237,6 +319,18 @@ func TestBooks(t *testing.T) {
 					TransmitOut: 3,
 					Lending:     2,
 					TransmitIn:  1,
+					Copies: BookCopies{
+						"zzh-book-002 b1":  BookCopy{Status: COPY_STATUS_TRANSIN},
+						"zzh-book-002 b2":  BookCopy{Status: COPY_STATUS_LENDING},
+						"zzh-book-002 b3":  BookCopy{Status: COPY_STATUS_LENDING},
+						"zzh-book-002 b4":  BookCopy{Status: COPY_STATUS_TRANSOUT},
+						"zzh-book-002 b5":  BookCopy{Status: COPY_STATUS_TRANSOUT},
+						"zzh-book-002 b6":  BookCopy{Status: COPY_STATUS_TRANSOUT},
+						"zzh-book-002 b7":  BookCopy{Status: COPY_STATUS_INSTOCK},
+						"zzh-book-002 b8":  BookCopy{Status: COPY_STATUS_INSTOCK},
+						"zzh-book-002 b9":  BookCopy{Status: COPY_STATUS_INSTOCK},
+						"zzh-book-002 b10": BookCopy{Status: COPY_STATUS_INSTOCK},
+					},
 					Relations: Relations{
 						REL_BOOK_PUBLIC: booksPids[1]["pub_id"],
 					},
@@ -498,21 +592,21 @@ func TestBooks(t *testing.T) {
 		for i, somebook := range expectBooks {
 			for _, mockChannel := range mockChannels {
 				msg := mockChannel.result[i].Message
-                                postType := mockChannel.result[i].Type
+				postType := mockChannel.result[i].Type
 
 				switch mockChannel.postIdType {
 				case "pub_id":
-                                        assert.Equal(t, "custom_book_type", postType, "post.type should be BookType")
+					assert.Equal(t, "custom_book_type", postType, "post.type should be BookType")
 					bookpub := new(BookPublic)
 					json.Unmarshal([]byte(msg), bookpub)
 					assert.Equalf(t, somebook.BookPublic, bookpub, "public part")
 				case "pri_id":
-                                        assert.Equal(t, "custom_book_private_type", postType, "post.type should be BookPrivateType")
+					assert.Equal(t, "custom_book_private_type", postType, "post.type should be BookPrivateType")
 					bookpri := new(BookPrivate)
 					json.Unmarshal([]byte(msg), bookpri)
 					assert.Equalf(t, somebook.BookPrivate, bookpri, "private part")
 				case "inv_id":
-                                        assert.Equal(t, "custom_book_inventory_type", postType, "post.type should be BookInventoryType")
+					assert.Equal(t, "custom_book_inventory_type", postType, "post.type should be BookInventoryType")
 					bookinv := new(BookInventory)
 					json.Unmarshal([]byte(msg), bookinv)
 					//initial expection status
@@ -520,6 +614,8 @@ func TestBooks(t *testing.T) {
 					somebook.TransmitOut = 0
 					somebook.TransmitIn = 0
 					somebook.Lending = 0
+					somebook.Copies = someBooksUpl[i].Copies
+
 					assert.Equalf(t, somebook.BookInventory, bookinv, "inventory part")
 				}
 			}
@@ -693,12 +789,17 @@ func TestBooks(t *testing.T) {
 		theseBooksUpl[0].BookPublic.IsAllowedToBorrow = false
 		theseBooksUpl[0].BookPrivate.KeeperUsers = []string{td.ABook.KeeperUsers[1]}
 		theseBooksUpl[0].BookInventory.Stock = 8
+		theseBooksUpl[0].BookInventory.Copies["zzh-book-001 b8"] = BookCopy{Status: COPY_STATUS_INSTOCK}
 
 		theseBooksUpl[1].BookPublic.Author = "new Author 2"
 		//don't update isAllowedToBorrow when updating
 		theseBooksUpl[1].BookPublic.IsAllowedToBorrow = false
 		theseBooksUpl[1].BookPrivate.KeeperUsers = []string{td.ABook.KeeperUsers[0]}
 		theseBooksUpl[1].BookInventory.Stock = 6
+		delete(theseBooksUpl[1].Copies, "zzh-book-002 b7")
+		delete(theseBooksUpl[1].Copies, "zzh-book-002 b8")
+		delete(theseBooksUpl[1].Copies, "zzh-book-002 b9")
+		delete(theseBooksUpl[1].Copies, "zzh-book-002 b10")
 
 		var expectBooks Books
 		DeepCopy(&expectBooks, &someBooksInDB)
@@ -709,6 +810,16 @@ func TestBooks(t *testing.T) {
 		expectBooks[0].BookInventory.TransmitOut = 2
 		expectBooks[0].BookInventory.Lending = 1
 		expectBooks[0].BookInventory.TransmitIn = 1
+		expectBooks[0].BookInventory.Copies = BookCopies{
+			"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_TRANSIN},
+			"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_LENDING},
+			"zzh-book-001 b3": BookCopy{Status: COPY_STATUS_TRANSOUT},
+			"zzh-book-001 b4": BookCopy{Status: COPY_STATUS_TRANSOUT},
+			"zzh-book-001 b5": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b6": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b7": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b8": BookCopy{Status: COPY_STATUS_INSTOCK},
+		}
 
 		expectBooks[1].BookPublic.Author = "new Author 2"
 		expectBooks[1].BookPrivate.KeeperUsers = []string{td.ABook.KeeperUsers[0]}
@@ -717,6 +828,14 @@ func TestBooks(t *testing.T) {
 		expectBooks[1].BookInventory.TransmitOut = 3
 		expectBooks[1].BookInventory.Lending = 2
 		expectBooks[1].BookInventory.TransmitIn = 1
+		expectBooks[1].BookInventory.Copies = BookCopies{
+			"zzh-book-002 b1": BookCopy{Status: COPY_STATUS_TRANSIN},
+			"zzh-book-002 b2": BookCopy{Status: COPY_STATUS_LENDING},
+			"zzh-book-002 b3": BookCopy{Status: COPY_STATUS_LENDING},
+			"zzh-book-002 b4": BookCopy{Status: COPY_STATUS_TRANSOUT},
+			"zzh-book-002 b5": BookCopy{Status: COPY_STATUS_TRANSOUT},
+			"zzh-book-002 b6": BookCopy{Status: COPY_STATUS_TRANSOUT},
+		}
 
 		for _, test := range []struct {
 			postids []string
@@ -1147,6 +1266,9 @@ func TestBooks(t *testing.T) {
 		someBooksInDB[0].BookInventory.Lending = 1
 		someBooksInDB[0].BookInventory.TransmitOut = 0
 		someBooksInDB[0].BookInventory.TransmitIn = 0
+		someBooksInDB[0].BookInventory.Copies = BookCopies{
+			"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_LENDING},
+		}
 
 		someBooksInDB[1].BookPublic.IsAllowedToBorrow = false
 		someBooksInDB[1].BookPublic.ManuallyDisallowed = true
@@ -1154,14 +1276,25 @@ func TestBooks(t *testing.T) {
 		someBooksInDB[1].BookInventory.Lending = 1
 		someBooksInDB[1].BookInventory.TransmitOut = 0
 		someBooksInDB[1].BookInventory.TransmitIn = 0
+		someBooksInDB[1].BookInventory.Copies = BookCopies{
+			"zzh-book-002 b3": BookCopy{Status: COPY_STATUS_LENDING},
+		}
 
 		var theseBooksUpl Books
 		DeepCopy(&theseBooksUpl, &someBooksUpl)
 		theseBooksUpl[0].BookInventory.Stock = 2
+		theseBooksUpl[0].BookInventory.Copies = BookCopies{
+			"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b7": BookCopy{Status: COPY_STATUS_INSTOCK},
+		}
 		theseBooksUpl[0].Upload = &Upload{
 			Post_id: booksPids[0]["pub_id"],
 		}
 		theseBooksUpl[1].BookInventory.Stock = 2
+		theseBooksUpl[1].BookInventory.Copies = BookCopies{
+			"zzh-book-002 b3": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-002 b4": BookCopy{Status: COPY_STATUS_INSTOCK},
+		}
 		theseBooksUpl[1].Upload = &Upload{
 			Post_id: booksPids[1]["pub_id"],
 		}
@@ -1172,11 +1305,19 @@ func TestBooks(t *testing.T) {
 		expectBooks[0].BookPublic.ManuallyDisallowed = false
 		expectBooks[0].BookInventory.Stock = 1
 		expectBooks[0].BookInventory.Lending = 1
+		expectBooks[0].BookInventory.Copies = BookCopies{
+			"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_LENDING},
+			"zzh-book-001 b7": BookCopy{Status: COPY_STATUS_INSTOCK},
+		}
 
 		expectBooks[1].BookPublic.IsAllowedToBorrow = false
 		expectBooks[1].BookPublic.ManuallyDisallowed = true
 		expectBooks[1].BookInventory.Stock = 1
 		expectBooks[1].BookInventory.Lending = 1
+		expectBooks[1].BookInventory.Copies = BookCopies{
+			"zzh-book-002 b3": BookCopy{Status: COPY_STATUS_LENDING},
+			"zzh-book-002 b4": BookCopy{Status: COPY_STATUS_INSTOCK},
+		}
 
 		booksJson, _ := json.Marshal(theseBooksUpl)
 
@@ -1200,6 +1341,55 @@ func TestBooks(t *testing.T) {
 
 	})
 
+	t.Run("update_stock_error_delete_not_stock", func(t *testing.T) {
+
+		resetMockChannels(mockChannels)
+		errctrls = initErrControl()
+
+		someBooksInDB = resetSomeBooksInDB()
+		someBooksInDB[0].BookInventory.Stock = 0
+		someBooksInDB[0].BookInventory.Lending = 1
+		someBooksInDB[0].BookInventory.TransmitOut = 0
+		someBooksInDB[0].BookInventory.TransmitIn = 0
+		someBooksInDB[0].BookInventory.Copies = BookCopies{
+			"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_LENDING},
+		}
+
+		var theseBooksUpl Books
+		DeepCopy(&theseBooksUpl, &someBooksUpl)
+		theseBooksUpl[0].BookInventory.Stock = 1
+		theseBooksUpl[0].BookInventory.Copies = BookCopies{
+			"zzh-book-001 b7": BookCopy{Status: COPY_STATUS_INSTOCK},
+		}
+		theseBooksUpl[0].Upload = &Upload{
+			Post_id: booksPids[0]["pub_id"],
+		}
+
+		booksJson, _ := json.Marshal(Books{theseBooksUpl[0]})
+
+		req := BooksRequest{
+			Action:  BOOKS_ACTION_UPLOAD,
+			ActUser: td.ABook.LibworkerNames[0],
+			Body:    string(booksJson),
+		}
+
+		reqJson, _ := json.Marshal(req)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/books", bytes.NewReader(reqJson))
+
+		plugin.ServeHTTP(nil, w, r)
+
+		_checkBookMessageResult(t, w, true, map[string]BooksMessage{
+			"zzh-book-001": {
+				PostId:  booksPids[0]["pub_id"],
+				Status:  BOOK_UPLOAD_ERROR,
+				Message: fmt.Sprintf("cannot delete copy %v with status %v is not InStock", "zzh-book-001 b2", COPY_STATUS_LENDING),
+			},
+		})
+
+	})
+
 	t.Run("delete_normal", func(t *testing.T) {
 		someBooksInDB = resetSomeBooksInDB()
 
@@ -1207,6 +1397,15 @@ func TestBooks(t *testing.T) {
 		someBooksInDB[0].BookInventory.TransmitIn = 0
 		someBooksInDB[0].BookInventory.TransmitOut = 0
 		someBooksInDB[0].BookInventory.Lending = 0
+		someBooksInDB[0].BookInventory.Copies = BookCopies{
+			"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b3": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b4": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b5": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b6": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b7": BookCopy{Status: COPY_STATUS_INSTOCK},
+		}
 		resetMockChannels(mockChannels)
 		errctrls = initErrControl()
 
@@ -1299,6 +1498,15 @@ func TestBooks(t *testing.T) {
 		someBooksInDB[0].TransmitOut = 0
 		someBooksInDB[0].Lending = 0
 		someBooksInDB[0].TransmitIn = 0
+		someBooksInDB[0].Copies = BookCopies{
+			"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b3": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b4": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b5": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b6": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b7": BookCopy{Status: COPY_STATUS_INSTOCK},
+		}
 
 		type delcnt map[string]int
 
@@ -1343,7 +1551,18 @@ func TestBooks(t *testing.T) {
 				},
 			},
 		} {
-			booksJson, _ := json.Marshal(Books{someBooksUpl[0]})
+			var theseBooksUpl Books
+			DeepCopy(&theseBooksUpl, &someBooksUpl)
+			theseBooksUpl[0].Upload = &Upload{
+				Post_id: booksPids[0]["pub_id"],
+				Delete:  true,
+			}
+
+			booksJson, _ := json.Marshal(Books{theseBooksUpl[0]})
+			theseBooksUpl[0].Upload = &Upload{
+				Post_id: booksPids[0]["pub_id"],
+				Delete:  true,
+			}
 
 			req := BooksRequest{
 				Action:  BOOKS_ACTION_UPLOAD,
@@ -1366,7 +1585,7 @@ func TestBooks(t *testing.T) {
 			if test.erc[td.BookChIdPub].notfound {
 				_checkBookMessageResult(t, w, true, map[string]BooksMessage{
 					"zzh-book-001": {
-						PostId: someBooksUpl[0].Upload.Post_id,
+						PostId: theseBooksUpl[0].Upload.Post_id,
 						Status: BOOK_UPLOAD_ERROR,
 					},
 				})
@@ -1374,7 +1593,7 @@ func TestBooks(t *testing.T) {
 
 				_checkBookMessageResult(t, w, false, map[string]BooksMessage{
 					"zzh-book-001": {
-						PostId: someBooksUpl[0].Upload.Post_id,
+						PostId: theseBooksUpl[0].Upload.Post_id,
 						Status: BOOK_UPLOAD_SUCC,
 					},
 				})
@@ -1385,6 +1604,52 @@ func TestBooks(t *testing.T) {
 			}
 		}
 
+	})
+
+	t.Run("fetch inv", func(t *testing.T) {
+		someBooksInDB = resetSomeBooksInDB()
+		resetMockChannels(mockChannels)
+		errctrls = initErrControl()
+
+		key := fmt.Sprintf(`[
+                  {
+                    "post_id": "%v"
+                  }
+                ]`, booksPids[0]["pub_id"])
+
+		var b1 Book
+		DeepCopy(&b1, someBooksInDB[0])
+
+		copyKeeperMap := map[string]Keeper{}
+		bookCopies := BookCopies{}
+		for copyid, keeper := range b1.CopyKeeperMap {
+			if keeper.User == td.ABook.KeeperUsers[0] {
+				copyKeeperMap[copyid] = keeper
+				bookCopies[copyid] = b1.Copies[copyid]
+			}
+		}
+
+		b1.BookPrivate = &BookPrivate{
+			CopyKeeperMap: copyKeeperMap,
+		}
+
+		b1.BookInventory = &BookInventory{
+			Copies: bookCopies,
+		}
+
+		result, _ := json.Marshal(b1)
+
+		sendARequestAndCheck(t, BooksRequest{
+			Action:  BOOKS_ACTION_FETCH_INV_KEEPER,
+			ActUser: td.ABook.KeeperUsers[0],
+			Body:    key,
+		}, false, map[string]BooksMessage{
+			"zzh-book-001": {
+				booksPids[0]["pub_id"],
+				BOOK_ACTION_SUCC,
+				string(result),
+			},
+		})
 	})
 
 }

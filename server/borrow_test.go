@@ -16,7 +16,7 @@ import (
 	// "github.com/stretchr/testify/require"
 )
 
-func TestHandleBorrow(t *testing.T) {
+func TestBorrowHandle(t *testing.T) {
 	_ = fmt.Println
 
 	td := NewTestData()
@@ -240,6 +240,7 @@ func TestHandleBorrow(t *testing.T) {
 			borrowExpJson, _ := json.Marshal(borrowExp)
 
 			expPost := &model.Post{
+				Id:        createdPid[role.channelId],
 				UserId:    plugin.botID,
 				ChannelId: role.channelId,
 				Message:   "",
@@ -596,12 +597,11 @@ func TestHandleBorrow(t *testing.T) {
 
 }
 
-
-func TestHandleBorrowForChange(t *testing.T) {
+func TestBorrowForChange(t *testing.T) {
 
 	t.Run("toggle to disallowed as no-stock", func(t *testing.T) {
 		td := NewTestData()
-		td.ABookInv.Stock = 0 
+		td.ABookInv.Stock = 0
 
 		api := td.ApiMockCommon()
 		plugin := td.NewMockPlugin()
@@ -609,10 +609,8 @@ func TestHandleBorrowForChange(t *testing.T) {
 
 		GenerateBorrowRequest(td, plugin, api)
 
-                assert.Equalf(t, false, td.ABookPub.IsAllowedToBorrow, "should not allowed")
-                assert.Equalf(t, "无库存", td.ABookPub.ReasonOfDisallowed, "reason should be the text of no-stock")
-                
-
+		assert.Equalf(t, false, td.ABookPub.IsAllowedToBorrow, "should not allowed")
+		assert.Equalf(t, "无库存", td.ABookPub.ReasonOfDisallowed, "reason should be the text of no-stock")
 
 	})
 }

@@ -17,6 +17,8 @@ var lockmap sync.Map
 type borrowWithPost struct {
 	post   *model.Post
 	borrow *Borrow
+	delete bool
+	create bool
 }
 
 func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter, r *http.Request) {
@@ -167,14 +169,16 @@ func (p *Plugin) _clearNextSteps(step *Step, workflow []Step, checked map[string
 	}
 }
 
-func (p *Plugin) _processInventoryOfSingleStep(workflow []Step, currStep *Step, nextStep *Step, bookInfo *bookInfo, backward bool) error {
+func (p *Plugin) _processInventoryOfSingleStep(brwq *borrowWithPost, currStep *Step, nextStep *Step, bookInfo *bookInfo, req *WorkflowRequest) error {
 
 	var (
 		increment int
 		refStep   *Step
 	)
 
-	if !backward {
+	brq := brwq.borrow.DataOrImage
+
+	if !req.Backward {
 		increment = 1
 		refStep = nextStep
 	} else {
@@ -189,11 +193,17 @@ func (p *Plugin) _processInventoryOfSingleStep(workflow []Step, currStep *Step, 
 		switch refStep.Status {
 		case STATUS_REQUESTED:
 		case STATUS_CONFIRMED:
+			if !req.Backward && inv.Stock <= 0 {
+				return ErrNoStock
+			}
 
-			//just set stock only once
-			//As master is the most completed role
-			if !backward && inv.Stock <= 0 {
-				return errors.New(fmt.Sprintf("No stock."))
+		case STATUS_KEEPER_CONFIRMED:
+			if !req.Backward && inv.Stock <= 0 {
+				return ErrNoStock
+			}
+
+			if !req.Backward && inv.Copies[req.ChosenCopyId].Status != COPY_STATUS_INSTOCK {
+				return ErrChooseInStockCopy
 			}
 
 			inv.Stock -= increment
@@ -209,10 +219,24 @@ func (p *Plugin) _processInventoryOfSingleStep(workflow []Step, currStep *Step, 
 			}
 
 			inv.TransmitOut += increment
-		case STATUS_KEEPER_CONFIRMED:
+
+			if !req.Backward {
+				//First should use request's chosen id, the following should
+				inv.Copies[req.ChosenCopyId] = BookCopy{COPY_STATUS_TRANSOUT}
+			} else {
+				inv.Copies[brq.ChosenCopyId] = BookCopy{COPY_STATUS_INSTOCK}
+			}
+
 		case STATUS_DELIVIED:
 			inv.TransmitOut -= increment
 			inv.Lending += increment
+
+			if !req.Backward {
+				inv.Copies[brq.ChosenCopyId] = BookCopy{COPY_STATUS_LENDING}
+			} else {
+				inv.Copies[brq.ChosenCopyId] = BookCopy{COPY_STATUS_TRANSOUT}
+			}
+
 		default:
 			return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", refStep.Status, refStep.WorkflowType))
 		}
@@ -229,6 +253,12 @@ func (p *Plugin) _processInventoryOfSingleStep(workflow []Step, currStep *Step, 
 		case STATUS_RETURN_CONFIRMED:
 			inv.Lending -= increment
 			inv.TransmitIn += increment
+
+			if !req.Backward {
+				inv.Copies[brq.ChosenCopyId] = BookCopy{COPY_STATUS_TRANSIN}
+			} else {
+				inv.Copies[brq.ChosenCopyId] = BookCopy{COPY_STATUS_LENDING}
+			}
 		case STATUS_RETURNED:
 			inv.TransmitIn -= increment
 			inv.Stock += increment
@@ -242,6 +272,11 @@ func (p *Plugin) _processInventoryOfSingleStep(workflow []Step, currStep *Step, 
 				pub.IsAllowedToBorrow {
 				pub.IsAllowedToBorrow = false
 				pub.ReasonOfDisallowed = p.i18n.GetText("no-stock")
+			}
+			if !req.Backward {
+				inv.Copies[brq.ChosenCopyId] = BookCopy{COPY_STATUS_INSTOCK}
+			} else {
+				inv.Copies[brq.ChosenCopyId] = BookCopy{COPY_STATUS_TRANSIN}
 			}
 		default:
 			return errors.New(fmt.Sprintf("Unknown status: %v in workflow: %v", refStep.Status, refStep.WorkflowType))
@@ -301,6 +336,206 @@ func (p *Plugin) _processRenewOfSingleStep(br *borrowWithPost, workflow []Step, 
 	}
 	return nil
 }
+
+func (p *Plugin) _processSyncKeeper(req *WorkflowRequest, masterBr *borrowWithPost,
+	currStep *Step, nextStep *Step, bookInfo *bookInfo) error {
+
+	if nextStep.Status != STATUS_KEEPER_CONFIRMED &&
+		currStep.Status != STATUS_KEEPER_CONFIRMED {
+		return nil
+	}
+
+	if !req.Backward && nextStep.Status == STATUS_KEEPER_CONFIRMED {
+		//ignore(delete) other keepers relations
+		masterBr.borrow.DataOrImage.KeeperUsers = []string{req.ActorUser}
+		keeperName, err := p._getDisplayNameByUser(req.ActorUser)
+		if err != nil {
+			return errors.Errorf("can't find actor name. actor: %v", req.ActorUser)
+		}
+		masterBr.borrow.DataOrImage.KeeperNames = []string{keeperName}
+		masterBr.borrow.DataOrImage.ChosenCopyId = req.ChosenCopyId
+
+		return nil
+	}
+
+	if req.Backward && currStep.Status == STATUS_KEEPER_CONFIRMED {
+		//create the other keepers( backward process)
+		masterBr.borrow.DataOrImage.KeeperUsers = bookInfo.book.KeeperUsers
+		masterBr.borrow.DataOrImage.KeeperNames = bookInfo.book.KeeperNames
+		masterBr.borrow.DataOrImage.ChosenCopyId = ""
+
+		return nil
+	}
+
+	//unrelevent status
+	return nil
+}
+
+func (p *Plugin) _copyFromMasterAndMark(all map[string][]*borrowWithPost, bookInfo *bookInfo) error {
+
+	master := all[MASTER][0]
+	masterWf := master.borrow.DataOrImage.Worflow
+	masterSt := masterWf[master.borrow.DataOrImage.StepIndex]
+
+	roleByUser := p._getRoleByUser(master.borrow.DataOrImage)
+	brqByUser := map[string]*BorrowRequest{}
+
+	for user, roles := range roleByUser {
+
+		var nBrq *BorrowRequest
+		brq, err := p._makeBorrowRequest(
+			&BorrowRequestKey{
+				bookInfo.pubPost.Id,
+				master.borrow.DataOrImage.BorrowerUser,
+			},
+			master.borrow.DataOrImage.BorrowerUser,
+			roles,
+			master.borrow.DataOrImage,
+			otherRequestData{})
+		if err != nil {
+			return errors.Wrapf(err, "in _copyFromMasterAndChange, calling _makeBorrowRequest error.")
+		}
+
+		//Caution: this workflow share the same space, if some modification is necessary,
+		//must deep copy it
+		nBrq = brq
+		nBrq.Worflow = masterWf
+		nBrq.StepIndex = master.borrow.DataOrImage.StepIndex
+		p._setStatusTag(masterSt.Status, nBrq)
+		nBrq.RenewedTimes = master.borrow.DataOrImage.RenewedTimes
+		nBrq.ChosenCopyId = master.borrow.DataOrImage.ChosenCopyId
+
+		brqByUser[user] = nBrq
+	}
+
+	roleByUserId := map[string][]string{}
+
+	__setNoKeeperAndMake := func(role string, user string) error {
+
+		all[role][0].borrow.DataOrImage = brqByUser[user]
+		directChannel, err := p._getBotDirectChannel(user)
+		if err != nil {
+			return errors.Wrapf(err, "can't get direct bot channel, user:%v", user)
+		}
+		roleByUserId[directChannel.Id] = roleByUser[user]
+		return nil
+	}
+
+	if err := __setNoKeeperAndMake(BORROWER, all[BORROWER][0].borrow.DataOrImage.BorrowerUser); err != nil {
+		return err
+	}
+
+	if err := __setNoKeeperAndMake(LIBWORKER, all[LIBWORKER][0].borrow.DataOrImage.LibworkerUser); err != nil {
+		return err
+	}
+
+	savedDc := map[string]string{}
+	//if keeper is lacked in all[KEEPER], flag it to be created
+	__findAnotherRole := func(roleByUserOrId map[string][]string, keeperUserOrId string) string {
+		var (
+			anotherRole string
+			roles       []string
+			ok          bool
+		)
+		if roles, ok = roleByUserOrId[keeperUserOrId]; !ok {
+			return ""
+		}
+		for _, role := range roles {
+			if role != KEEPER {
+				anotherRole = role
+				break
+			}
+		}
+		return anotherRole
+	}
+
+	master.borrow.RelationKeys.Keepers = []string{}
+
+	for _, keeperUser := range master.borrow.DataOrImage.KeeperUsers {
+
+		directChannel, err := p._getBotDirectChannel(keeperUser)
+		if err != nil {
+			return errors.Wrapf(err, "can't get direct bot channel, user:%v", keeperUser)
+		}
+		savedDc[keeperUser] = directChannel.Id
+
+		var existed bool
+
+		for _, keeper := range all[KEEPER] {
+			if keeper.post.ChannelId == directChannel.Id {
+				keeper.borrow.DataOrImage = brqByUser[keeperUser]
+				master.borrow.RelationKeys.Keepers =
+					append(master.borrow.RelationKeys.Keepers, keeper.post.Id)
+				existed = true
+				break
+			}
+		}
+
+		if !existed {
+			anotherRole := __findAnotherRole(roleByUser, keeperUser)
+
+			if anotherRole == "" {
+				msgBytes, err := json.Marshal(brqByUser[keeperUser])
+				if err != nil {
+					return errors.Wrapf(err, "mashal keeper borrow error")
+				}
+				//the creation will effect the relation key
+				//but make all the db operation in _save, for the sake of rollback
+				all[KEEPER] = append(all[KEEPER], &borrowWithPost{
+					borrow: &Borrow{
+						Role: roleByUser[keeperUser],
+						RelationKeys: RelationKeys{
+							Master: master.post.Id,
+						},
+						DataOrImage: brqByUser[keeperUser],
+					},
+					post: &model.Post{
+						ChannelId: directChannel.Id,
+						Message:   string(msgBytes),
+					},
+					create: true,
+				})
+			} else {
+				master.borrow.RelationKeys.Keepers =
+					append(master.borrow.RelationKeys.Keepers, all[anotherRole][0].post.Id)
+			}
+
+		}
+	}
+
+	//if keeper is lacked in master.keeperUsers, flag it to be deleted
+	for _, keeper := range all[KEEPER] {
+
+		var existed bool
+		for _, keeperUser := range master.borrow.DataOrImage.KeeperUsers {
+			if savedDc[keeperUser] == keeper.post.ChannelId {
+				existed = true
+				break
+			}
+
+		}
+
+		if !existed {
+			anotherRole := __findAnotherRole(roleByUserId, keeper.post.ChannelId)
+
+			if anotherRole == "" {
+				keeper.delete = true
+			}
+
+// 			newKeys := []string{}
+// 			for _, key := range master.borrow.RelationKeys.Keepers {
+// 				if key != keeper.post.Id {
+// 					newKeys = append(newKeys, key)
+// 				}
+// 			}
+// 
+// 			master.borrow.RelationKeys.Keepers = newKeys
+		}
+	}
+
+	return nil
+}
+
 func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost, bookInfo *bookInfo) error {
 
 	actionTime := GetNowTime()
@@ -347,11 +582,16 @@ func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost
 			return errors.New(fmt.Sprintf("Unknown workflow: %v", nextStep.WorkflowType))
 		}
 
-		if err := p._processInventoryOfSingleStep(workflow, currStep, nextStep, bookInfo, req.Backward); err != nil {
+		if err := p._processInventoryOfSingleStep(br, currStep, nextStep, bookInfo, req); err != nil {
 			return err
 		}
 
 		if err := p._processRenewOfSingleStep(br, workflow, currStep, nextStep, bookInfo, req.Backward); err != nil {
+			return err
+		}
+
+		//Sync the keepers' br, these br will be sync to database in _save methoc
+		if err := p._processSyncKeeper(req, br, currStep, nextStep, bookInfo); err != nil {
 			return err
 		}
 
@@ -361,30 +601,16 @@ func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost
 			nextStep.LastActualStepIndex = br.borrow.DataOrImage.StepIndex
 		}
 		br.borrow.DataOrImage.StepIndex = req.NextStepIndex
-		p._setTags(nextStep.Status, br.borrow.DataOrImage)
+		p._resetMasterTags(br.borrow.DataOrImage)
 
 		checked := map[string]struct{}{}
 		p._initChecked(workflow, workflow[0], *nextStep, checked)
 		p._clearNextSteps(nextStep, workflow, checked)
 	}
 
-	//Set others
-	//We seperate these from master process, for the performance reason
-	master := all[MASTER][0]
-	masterWf := master.borrow.DataOrImage.Worflow
-	masterSt := masterWf[req.NextStepIndex]
-
-	for _, role := range []string{
-		BORROWER, LIBWORKER, KEEPER,
-	} {
-		for _, br := range all[role] {
-			//Caution: this workflow share the same space, if some modification is necessary,
-			//must deep copy it
-			br.borrow.DataOrImage.Worflow = masterWf
-			br.borrow.DataOrImage.StepIndex = req.NextStepIndex
-			p._setTags(masterSt.Status, br.borrow.DataOrImage)
-			br.borrow.DataOrImage.RenewedTimes = master.borrow.DataOrImage.RenewedTimes
-		}
+	//Set other roles' borrow request
+	if err := p._copyFromMasterAndMark(all, bookInfo); err != nil {
+		return err
 	}
 
 	return nil
@@ -399,12 +625,13 @@ func (p *Plugin) _deleteBorrowRequest(req *WorkflowRequest, all map[string][]*bo
 
 	if st != STATUS_REQUESTED &&
 		st != STATUS_CONFIRMED &&
-                st != STATUS_KEEPER_CONFIRMED &&
+		st != STATUS_KEEPER_CONFIRMED &&
 		st != STATUS_RETURNED {
 
 		return errors.New("the request is not allowed to be deleted.")
 	}
 
+	// put master deletion at last
 	for _, role := range []string{
 		KEEPER, BORROWER, LIBWORKER, MASTER,
 	} {
@@ -417,7 +644,7 @@ func (p *Plugin) _deleteBorrowRequest(req *WorkflowRequest, all map[string][]*bo
 				if role == MASTER {
 					// we must place the inventory adjustment firslty when processing Master
 					// this leave a chance to retry when update book parts error
-					if st == STATUS_CONFIRMED || st == STATUS_KEEPER_CONFIRMED {
+					if st == STATUS_KEEPER_CONFIRMED {
 						inv := bookInfo.book.BookInventory
 						inv.TransmitOut--
 						inv.Stock++
@@ -426,6 +653,15 @@ func (p *Plugin) _deleteBorrowRequest(req *WorkflowRequest, all map[string][]*bo
 							bookInfo.book.IsAllowedToBorrow = true
 							bookInfo.book.ReasonOfDisallowed = ""
 						}
+
+						chosen := brwp.borrow.DataOrImage.ChosenCopyId
+						//Don't need make the chosen field in brq blank, because they are deleted
+
+						if _, ok := inv.Copies[chosen]; !ok {
+							return errors.New(fmt.Sprintf("can't find copy id: %v", chosen))
+						}
+
+						inv.Copies[chosen] = BookCopy{COPY_STATUS_INSTOCK}
 
 						if err := p._updateBookParts(updateOptions{
 							pub:     bookInfo.book.BookPublic,
@@ -572,49 +808,222 @@ func (p *Plugin) _unlock(all map[string][]*borrowWithPost) {
 	}
 }
 
+func (p *Plugin) _updateRelationsKeys(all map[string][]*borrowWithPost, oper string, role string, key string) error {
+
+	master := all[MASTER][0]
+	switch oper {
+	case "create":
+		switch role {
+		case KEEPER:
+			master.borrow.RelationKeys.Keepers = append(master.borrow.RelationKeys.Keepers, key)
+		default:
+		}
+	case "delete":
+		switch role {
+		case KEEPER:
+			var newKeys []string
+			for _, keeper := range all[KEEPER] {
+				if keeper.post.Id != key {
+					newKeys = append(newKeys, keeper.post.Id)
+				}
+			}
+			master.borrow.RelationKeys.Keepers = newKeys
+		default:
+		}
+	default:
+	}
+
+	return nil
+}
+
+func (p *Plugin) _rollBackDeleted(posts []*model.Post) (map[string]*model.Post, error) {
+
+	created := map[string]*model.Post{}
+	for _, post := range posts {
+		var oldPost model.Post
+		DeepCopy(&oldPost, post)
+		oldPost.Id = ""
+		if newPost, appErr := p.API.CreatePost(&oldPost); appErr != nil {
+			return nil, appErr
+		} else {
+			created[post.Id] = newPost
+		}
+	}
+
+	return created, nil
+}
+
+func (p *Plugin) _updateMasterForRollback(master *borrowWithPost, rbCreated map[string]*model.Post) error {
+	var masterBor Borrow
+	//get old master borrow
+	if err := json.Unmarshal([]byte(master.post.Message), &masterBor); err != nil {
+		return errors.Wrapf(err, "unmarshal old master error")
+	}
+
+	for oldPid, newPost := range rbCreated {
+		var newBorrow Borrow
+		if err := json.Unmarshal([]byte(newPost.Message), &newBorrow); err != nil {
+			return errors.Wrapf(err, "unmarshal created borrow error")
+		}
+
+		for _, role := range newBorrow.Role {
+			switch role {
+			case KEEPER:
+				newIds := []string{}
+				for _, oldId := range masterBor.RelationKeys.Keepers {
+					if oldId == oldPid {
+						newIds = append(newIds, newPost.Id)
+						continue
+					}
+					newIds = append(newIds, oldId)
+				}
+				masterBor.RelationKeys.Keepers = newIds
+			case BORROWER:
+				if masterBor.RelationKeys.Borrower == oldPid {
+					masterBor.RelationKeys.Borrower = newPost.Id
+				}
+			case LIBWORKER:
+				if masterBor.RelationKeys.Libworker == oldPid {
+					masterBor.RelationKeys.Libworker = newPost.Id
+				}
+			default:
+			}
+		}
+
+	}
+
+	if masterBytes, err := json.Marshal(masterBor); err != nil {
+		return errors.Wrapf(err, "marshal master error")
+	} else {
+		var newMasterPost model.Post
+		DeepCopy(&newMasterPost, master.post)
+		newMasterPost.Message = string(masterBytes)
+		if newMasterPost.Message != master.post.Message {
+			if _, err := p.API.UpdatePost(&newMasterPost); err != nil {
+				return errors.Wrapf(err, "update master post error")
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func (p *Plugin) _workflowUpdateRollback(all map[string][]*borrowWithPost, role string, updated []*model.Post,
+	created []*model.Post, deleted []*model.Post) error {
+	if err := p._rollbackToOld(updated); err != nil {
+		return err
+	}
+	if err := p._rollBackCreated(created); err != nil {
+		return err
+	}
+
+	//because MASTER is the latest to be updated, so there is no need to udpate relation
+	//if MASTER  failed, no update to DB
+	//if something before MASTER failed, no udpate to DB, too
+
+	if rbCreated, err := p._rollBackDeleted(deleted); err != nil {
+		return err
+	} else {
+		if err := p._updateMasterForRollback(all[MASTER][0], rbCreated); err != nil {
+			return err
+		}
+	}
+
+	return nil
+
+}
+
 func (p *Plugin) _save(all map[string][]*borrowWithPost, bookInfo *bookInfo) error {
 
 	updated := []*model.Post{}
+	created := []*model.Post{}
+	deleted := []*model.Post{}
 
-	for _, role := range []struct {
-		name string
-	}{
-		{
-			name: MASTER,
-		},
-		{
-			name: BORROWER,
-		},
-		{
-			name: LIBWORKER,
-		},
-		{
-			name: KEEPER,
-		},
+	processed := map[string]bool{}
+
+	for _, role := range []string{
+		BORROWER,
+		KEEPER,
+		LIBWORKER,
+		//MUST MAKE MASTER TO BE UPDATED LAST
+		//As there maybe updating relationskeys in the process
+		//presumely, MASTER updating must be succussfuly, or every thing will be ruined
+		MASTER,
 	} {
 
-		brw := all[role.name]
+		brw := all[role]
 		for _, br := range brw {
+
+			//prevent a user with multi-roles from repeating prcess
+			if br.post != nil {
+				if _, ok := processed[br.post.Id]; ok {
+					continue
+				}
+			}
+
+			if br.delete {
+
+				if appErr := p.API.DeletePost(br.post.Id); appErr != nil {
+					if err := p._workflowUpdateRollback(all, role, updated, created, deleted); err != nil {
+						return errors.Wrapf(err, "Fatal Error, Failed to delete a borrow record. role: %v, and rollback error", role)
+					}
+				} else {
+					deleted = append(deleted, br.post)
+				}
+
+				continue
+
+			}
+
+			if br.create {
+				if post, appErr := p.API.CreatePost(&model.Post{
+					UserId:    p.botID,
+					ChannelId: br.post.ChannelId,
+					Message:   "",
+					Type:      "custom_borrow_type",
+				}); appErr != nil {
+					if err := p._workflowUpdateRollback(all, role, updated, created, deleted); err != nil {
+						return errors.Wrapf(err, "Fatal Error, Failed to create a new borrow record. role: %v, and rollback error", role)
+					}
+					return errors.Wrapf(appErr, "Failed to create a new borrow record. role: %v", role)
+				} else {
+					br.post = post
+					//Only create should update relation key
+					//the updating of deleting is done at _process stage
+					p._updateRelationsKeys(all, "create", role, post.Id)
+					created = append(created, post)
+				}
+			}
+
 			brJson, err := json.MarshalIndent(br.borrow, "", "  ")
 			if err != nil {
-				p._rollbackToOld(updated)
+				if err := p._workflowUpdateRollback(all, role, updated, created, deleted); err != nil {
+					return errors.Wrapf(err, "Fatal Error, mashal error, role: %v, and rollback error", role)
+				}
 				return errors.Wrapf(err, fmt.Sprintf("Marshal %v error.", role))
 			}
 			updBr := &model.Post{}
 			if err = DeepCopy(updBr, br.post); err != nil {
-				p._rollbackToOld(updated)
-				return errors.Wrapf(err, fmt.Sprintf("Deep copy error. role: %v, postid: %v", role.name, br.post.Id))
+				if err := p._workflowUpdateRollback(all, role, updated, created, deleted); err != nil {
+					return errors.Wrapf(err, "Fatal Error, deepcopy error, role: %v, and rollback error", role)
+				}
+				return errors.Wrapf(err, fmt.Sprintf("Deep copy error. role: %v, postid: %v", role, br.post.Id))
 			}
 
 			updBr.Message = string(brJson)
 			if updBr.Message != br.post.Message {
 				if _, err := p.API.UpdatePost(updBr); err != nil {
-					p._rollbackToOld(updated)
-					return errors.Wrapf(err, fmt.Sprintf("Update post error. role: %v, postid: %v", role.name, br.post.Id))
+					if err := p._workflowUpdateRollback(all, role, updated, created, deleted); err != nil {
+						return errors.Wrapf(err, "Fatal Error, update post error, role: %v, and rollback error", role)
+					}
+					return errors.Wrapf(err, fmt.Sprintf("Update post error. role: %v, postid: %v", role, br.post.Id))
 				}
 
 				updated = append(updated, br.post)
 			}
+
+			processed[br.post.Id] = true
 		}
 
 	}
@@ -627,16 +1036,23 @@ func (p *Plugin) _save(all map[string][]*borrowWithPost, bookInfo *bookInfo) err
 		inv:     bookInfo.book.BookInventory,
 		invPost: bookInfo.invPost,
 	}); err != nil {
+		//Only Keeper will be considered for relation updateds
+		if err := p._workflowUpdateRollback(all, KEEPER, updated, created, deleted); err != nil {
+			return errors.Wrapf(err, "Fatal Error, update pub error, and rollback error")
+		}
 		p._rollbackToOld(updated)
 		return errors.New("update pub error.")
 	}
 	return nil
 }
 
-func (p *Plugin) _rollbackToOld(updated []*model.Post) {
+func (p *Plugin) _rollbackToOld(updated []*model.Post) error {
 	for _, post := range updated {
-		p.API.UpdatePost(post)
+		if _, appErr := p.API.UpdatePost(post); appErr != nil {
+			return appErr
+		}
 	}
+	return nil
 }
 
 func (p *Plugin) _notifyStatusChange(all map[string][]*borrowWithPost, req *WorkflowRequest) error {

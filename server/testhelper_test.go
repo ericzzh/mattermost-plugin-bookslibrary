@@ -61,6 +61,7 @@ type TestData struct {
 	block0             chan struct{}
 	block1             chan struct{}
 	updateBookErr      bool
+	updateBorrowErr    map[string]bool
 }
 type bookInjectOptions struct {
 	keepersAsLibworkers bool
@@ -119,15 +120,30 @@ func NewTestData(bookInject ...bookInjectOptions) *TestData {
 
 	keeperUsers := []string{"kpuser1", "kpuser2"}
 	keeperNames := []string{"kpname1", "kpname2"}
+
+	var copyKeeperMap map[string]Keeper
+	copyKeeperMap = map[string]Keeper{
+		"zzh-book-001 b1": {User: "kpuser1"},
+		"zzh-book-001 b2": {User: "kpuser1"},
+		"zzh-book-001 b3": {User: "kpuser2"},
+	}
+
 	if inject.keepersAsLibworkers {
 		keeperUsers = td.ABookPub.LibworkerUsers
 		keeperNames = td.ABookPub.LibworkerNames
+		copyKeeperMap = map[string]Keeper{
+			"zzh-book-001 b1": {User: td.ABookPub.LibworkerUsers[0]},
+			"zzh-book-001 b2": {User: td.ABookPub.LibworkerUsers[0]},
+			"zzh-book-001 b3": {User: td.ABookPub.LibworkerUsers[1]},
+		}
 	}
+
 	td.ABookPri = &BookPrivate{
-		Id:          "zzh-book-001",
-		Name:        "a test book",
-		KeeperUsers: keeperUsers,
-		KeeperNames: keeperNames,
+		Id:            "zzh-book-001",
+		Name:          "a test book",
+		KeeperUsers:   keeperUsers,
+		KeeperNames:   keeperNames,
+		CopyKeeperMap: copyKeeperMap,
 		Relations: Relations{
 			REL_BOOK_PUBLIC: td.BookPostIdPub,
 		},
@@ -137,6 +153,11 @@ func NewTestData(bookInject ...bookInjectOptions) *TestData {
 		Id:    "zzh-book-001",
 		Name:  "a test book",
 		Stock: 3,
+		Copies: BookCopies{
+			"zzh-book-001 b1": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b2": BookCopy{Status: COPY_STATUS_INSTOCK},
+			"zzh-book-001 b3": BookCopy{Status: COPY_STATUS_INSTOCK},
+		},
 		Relations: Relations{
 			REL_BOOK_PUBLIC: td.BookPostIdPub,
 		},
@@ -474,6 +495,8 @@ func NewTestData(bookInject ...bookInjectOptions) *TestData {
 			return post.Id == PostId && post.RootId == ""
 		}
 	}
+
+	td.updateBorrowErr = map[string]bool{}
 	return td
 }
 
@@ -527,46 +550,93 @@ func GenerateBorrowRequest(td *TestData, plugin *Plugin, api *plugintest.API, in
 	}
 
 	api.On("CreatePost", mock.MatchedBy(matchPost(plugin.borrowChannel.Id))).Run(runfn).
-		Return(&model.Post{
-			Id:        createdPid[plugin.borrowChannel.Id],
-			ChannelId: plugin.borrowChannel.Id,
-			UserId:    td.BotId,
-			Type:      "custom_borrow_type",
+		Return(func(post *model.Post) *model.Post {
+			realbrPost := &model.Post{
+				Id:        createdPid[plugin.borrowChannel.Id],
+				ChannelId: plugin.borrowChannel.Id,
+				UserId:    td.BotId,
+				Type:      "custom_borrow_type",
+				Message:   post.Message,
+			}
+
+			var createdPost model.Post
+			DeepCopy(&createdPost, realbrPost)
+
+			realbrPosts[plugin.borrowChannel.Id] = &createdPost
+
+			return realbrPost
 		}, nil)
 	api.On("CreatePost", mock.MatchedBy(matchPost(td.BorId_botId))).Run(runfn).
-		Return(&model.Post{
-			Id:        createdPid[td.BorId_botId],
-			ChannelId: td.BorId_botId,
-			UserId:    td.BotId,
-			Type:      "custom_borrow_type",
+		Return(func(post *model.Post) *model.Post {
+			realbrPost := &model.Post{
+				Id:        createdPid[td.BorId_botId],
+				ChannelId: td.BorId_botId,
+				UserId:    td.BotId,
+				Type:      "custom_borrow_type",
+				Message:   post.Message,
+			}
+			var createdPost model.Post
+			DeepCopy(&createdPost, realbrPost)
+			realbrPosts[td.BorId_botId] = &createdPost
+			return realbrPost
 		}, nil)
 	api.On("CreatePost", mock.MatchedBy(matchPost(td.Worker1Id_botId))).Run(runfn).
-		Return(&model.Post{
-			Id:        createdPid[td.Worker1Id_botId],
-			ChannelId: td.Worker1Id_botId,
-			UserId:    td.BotId,
-			Type:      "custom_borrow_type",
+		Return(func(post *model.Post) *model.Post {
+
+			realbrPost := &model.Post{
+				Id:        createdPid[td.Worker1Id_botId],
+				ChannelId: td.Worker1Id_botId,
+				UserId:    td.BotId,
+				Type:      "custom_borrow_type",
+				Message:   post.Message,
+			}
+			var createdPost model.Post
+			DeepCopy(&createdPost, realbrPost)
+			realbrPosts[td.Worker1Id_botId] = &createdPost
+			return realbrPost
 		}, nil)
 	api.On("CreatePost", mock.MatchedBy(matchPost(td.Worker2Id_botId))).Run(runfn).
-		Return(&model.Post{
-			Id:        createdPid[td.Worker2Id_botId],
-			ChannelId: td.Worker2Id_botId,
-			UserId:    td.BotId,
-			Type:      "custom_borrow_type",
+		Return(func(post *model.Post) *model.Post {
+			realbrPost := &model.Post{
+				Id:        createdPid[td.Worker2Id_botId],
+				ChannelId: td.Worker2Id_botId,
+				UserId:    td.BotId,
+				Type:      "custom_borrow_type",
+				Message:   post.Message,
+			}
+
+			var createdPost model.Post
+			DeepCopy(&createdPost, realbrPost)
+			realbrPosts[td.Worker2Id_botId] = &createdPost
+			return realbrPost
 		}, nil)
 	api.On("CreatePost", mock.MatchedBy(matchPost(td.Keeper1Id_botId))).Run(runfn).
-		Return(&model.Post{
-			Id:        createdPid[td.Keeper1Id_botId],
-			ChannelId: td.Keeper1Id_botId,
-			UserId:    td.BotId,
-			Type:      "custom_borrow_type",
+		Return(func(post *model.Post) *model.Post {
+			realbrPost := &model.Post{
+				Id:        createdPid[td.Keeper1Id_botId],
+				ChannelId: td.Keeper1Id_botId,
+				UserId:    td.BotId,
+				Type:      "custom_borrow_type",
+				Message:   post.Message,
+			}
+			var createdPost model.Post
+			DeepCopy(&createdPost, realbrPost)
+			realbrPosts[td.Keeper1Id_botId] = &createdPost
+			return realbrPost
 		}, nil)
 	api.On("CreatePost", mock.MatchedBy(matchPost(td.Keeper2Id_botId))).Run(runfn).
-		Return(&model.Post{
-			Id:        createdPid[td.Keeper2Id_botId],
-			ChannelId: td.Keeper2Id_botId,
-			UserId:    td.BotId,
-			Type:      "custom_borrow_type",
+		Return(func(post *model.Post) *model.Post {
+			realbrPost := &model.Post{
+				Id:        createdPid[td.Keeper2Id_botId],
+				ChannelId: td.Keeper2Id_botId,
+				UserId:    td.BotId,
+				Type:      "custom_borrow_type",
+				Message:   post.Message,
+			}
+			var createdPost model.Post
+			DeepCopy(&createdPost, realbrPost)
+			realbrPosts[td.Keeper2Id_botId] = &createdPost
+			return realbrPost
 		}, nil)
 
 	if injectOpt.updatePost != nil {
@@ -574,17 +644,52 @@ func GenerateBorrowRequest(td *TestData, plugin *Plugin, api *plugintest.API, in
 	}
 
 	api.On("UpdatePost", mock.MatchedBy(matchPost(plugin.borrowChannel.Id))).Run(runfnUpd).
-		Return(&model.Post{Id: createdPid[plugin.borrowChannel.Id]}, nil)
+		Return(
+			func(post *model.Post) *model.Post {
+				realbrUpdPosts[plugin.borrowChannel.Id] = post
+				return post
+			}, func(post *model.Post) *model.AppError {
+				if _, ok := td.updateBorrowErr[td.BorChannelId]; ok {
+					return &model.AppError{}
+				}
+				return nil
+
+			})
 	api.On("UpdatePost", mock.MatchedBy(matchPost(td.BorId_botId))).Run(runfnUpd).
-		Return(&model.Post{Id: createdPid[td.BorId_botId]}, nil)
+		Return(
+			func(post *model.Post) *model.Post {
+				realbrUpdPosts[td.BorId_botId] = post
+				return post
+			},
+			nil)
 	api.On("UpdatePost", mock.MatchedBy(matchPost(td.Worker1Id_botId))).Run(runfnUpd).
-		Return(&model.Post{Id: createdPid[td.Worker1Id_botId]}, nil)
+		Return(
+			func(post *model.Post) *model.Post {
+				realbrUpdPosts[td.Worker1Id_botId] = post
+				return post
+			},
+			nil)
 	api.On("UpdatePost", mock.MatchedBy(matchPost(td.Worker2Id_botId))).Run(runfnUpd).
-		Return(&model.Post{Id: createdPid[td.Worker2Id_botId]}, nil)
+		Return(
+			func(post *model.Post) *model.Post {
+				realbrUpdPosts[td.Worker2Id_botId] = post
+				return post
+			},
+			nil)
 	api.On("UpdatePost", mock.MatchedBy(matchPost(td.Keeper1Id_botId))).Run(runfnUpd).
-		Return(&model.Post{Id: createdPid[td.Keeper1Id_botId]}, nil)
+		Return(
+			func(post *model.Post) *model.Post {
+				realbrUpdPosts[td.Keeper1Id_botId] = post
+				return post
+			},
+			nil)
 	api.On("UpdatePost", mock.MatchedBy(matchPost(td.Keeper2Id_botId))).Run(runfnUpd).
-		Return(&model.Post{Id: createdPid[td.Keeper2Id_botId]}, nil)
+		Return(
+			func(post *model.Post) *model.Post {
+				realbrUpdPosts[td.Keeper2Id_botId] = post
+				return post
+			},
+			nil)
 
 	if injectOpt.searchPosts != nil {
 		injectOpt.searchPosts()
@@ -672,6 +777,10 @@ func _checkBookMessageResult(t *testing.T, w *httptest.ResponseRecorder, ifErr b
 		json.Unmarshal([]byte(bodyJson), &body)
 		assert.Equalf(t, body.PostId, msg.PostId, "public post id.")
 		assert.Equalf(t, body.Status, msg.Status, "status.")
+		if msg.Message != "" {
+			// assert.Containsf(t, body.Message, msg.Message, "should contain expected message")
+			assert.Equalf(t, msg.Message, body.Message, "should contain expected message")
+		}
 	}
 
 }

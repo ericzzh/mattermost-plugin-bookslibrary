@@ -121,6 +121,30 @@ func (p *Plugin) handleBooksRequest(c *plugin.Context, w http.ResponseWriter, r 
 		})
 
 		w.Write(resp)
+	case BOOKS_ACTION_FETCH_INV_KEEPER:
+
+		messages, err := p._fetchBooks(booksRequest.Body,
+			fetchOptions{
+				fetchPub:   true,
+				keeperUser: booksRequest.ActUser,
+			})
+		if err != nil {
+			p.API.LogError("fetch books error.", "err", fmt.Sprintf("%+v", err))
+			resp, _ := json.Marshal(Result{
+				Error:    "fetch books error.",
+				Messages: messages,
+			})
+
+			w.Write(resp)
+			return
+		}
+
+		resp, _ := json.Marshal(Result{
+			Error:    "",
+			Messages: messages,
+		})
+
+		w.Write(resp)
 
 	default:
 		p.API.LogError("invalidate action.")
@@ -228,7 +252,9 @@ func (p *Plugin) _updateBookParts(opts updateOptions) error {
 
 	if opts.pub != nil {
 		if err := p._updateBookPart(opts.pubPost, opts.pub); err != nil {
-			p._rollbackToOld(updates)
+			if err := p._rollbackToOld(updates); err != nil {
+				return errors.Wrapf(err, "Fatal Error, rollback error by pub updates.")
+			}
 			return err
 		}
 		updates = append(updates, opts.pubPost)
@@ -236,7 +262,9 @@ func (p *Plugin) _updateBookParts(opts updateOptions) error {
 
 	if opts.pri != nil {
 		if err := p._updateBookPart(opts.priPost, opts.pri); err != nil {
-			p._rollbackToOld(updates)
+			if err := p._rollbackToOld(updates); err != nil {
+				return errors.Wrapf(err, "Fatal Error, rollback error by pri updates.")
+			}
 			return err
 		}
 		updates = append(updates, opts.priPost)
@@ -244,7 +272,9 @@ func (p *Plugin) _updateBookParts(opts updateOptions) error {
 
 	if opts.inv != nil {
 		if err := p._updateBookPart(opts.invPost, opts.inv); err != nil {
-			p._rollbackToOld(updates)
+			if err := p._rollbackToOld(updates); err != nil {
+				return errors.Wrapf(err, "Fatal Error, rollback error by inv updates.")
+			}
 			return err
 		}
 		updates = append(updates, opts.invPost)
@@ -302,12 +332,12 @@ func (p *Plugin) _updateABook(book *Book) error {
 	//IsAllowedToBorrow is not updated when updating
 	if !book.Upload.UpdIsAllowedToBorrow {
 		bookPub.IsAllowedToBorrow = bookPubOld.IsAllowedToBorrow
-                bookPub.ManuallyDisallowed = bookPubOld.ManuallyDisallowed
+		bookPub.ManuallyDisallowed = bookPubOld.ManuallyDisallowed
 	} else {
 		//manually update, should update this field
 		if bookPub.IsAllowedToBorrow {
 			bookPub.ManuallyDisallowed = false
-                        bookPub.ReasonOfDisallowed = ""
+			bookPub.ReasonOfDisallowed = ""
 		} else {
 			bookPub.ManuallyDisallowed = true
 		}
@@ -349,6 +379,7 @@ func (p *Plugin) _updateABook(book *Book) error {
 	}
 
 	if bookInv != nil {
+		//udpate stock
 		totalOld := bookInvOld.Stock + bookInvOld.TransmitOut + bookInvOld.Lending + bookInvOld.TransmitIn
 		if bookInv.Stock > totalOld {
 			diff := bookInv.Stock - totalOld
@@ -363,11 +394,32 @@ func (p *Plugin) _updateABook(book *Book) error {
 		bookInv.TransmitIn = bookInvOld.TransmitIn
 		bookInv.Lending = bookInvOld.Lending
 		bookInv.TransmitOut = bookInvOld.TransmitOut
-                
-                if bookInv.Stock > 0 && !bookPub.ManuallyDisallowed && !bookPub.IsAllowedToBorrow {
-                    bookPub.IsAllowedToBorrow = true
-                }
 
+		if bookInv.Stock > 0 && !bookPub.ManuallyDisallowed && !bookPub.IsAllowedToBorrow {
+			bookPub.IsAllowedToBorrow = true
+		}
+
+		//update copies
+
+		//update from old inventory value, if exists
+		//if not existed, leave using uploaded value(InStock)
+		for id := range bookInv.Copies {
+			if _, ok := bookInvOld.Copies[id]; ok {
+				bookInv.Copies[id] = bookInvOld.Copies[id]
+			}
+		}
+
+		//skip copies in old inventory if id is not existed in upload copies(to be deleted)
+		//error if the deleting copy's status is not InStock
+		for id, val := range bookInvOld.Copies {
+			if _, ok := bookInv.Copies[id]; !ok {
+				if val.Status != COPY_STATUS_INSTOCK {
+					return errors.New(fmt.Sprintf("cannot delete copy %v with status %v is not InStock", id, val.Status))
+				}
+			}
+		}
+
+		//set relation
 		bookInv.Relations = bookInvOld.Relations
 	}
 
@@ -603,7 +655,9 @@ func (p *Plugin) _createABook(book *Book) (string, error) {
 	)
 
 	if appErr != nil {
-		p._rollBackCreated(created)
+		if err := p._rollBackCreated(created); err != nil {
+			return "", errors.Wrapf(err, "Fatal Error: rollback error by pri create")
+		}
 		return "", errors.Wrapf(appErr, "create pri post error.")
 	}
 
@@ -620,7 +674,10 @@ func (p *Plugin) _createABook(book *Book) (string, error) {
 	)
 
 	if appErr != nil {
-		p._rollBackCreated(created)
+		if err := p._rollBackCreated(created); err != nil {
+
+			return "", errors.Wrapf(err, "Fatal Error: rollback error by creating inv post error.")
+		}
 		return "", errors.Wrapf(appErr, "create inv post error.")
 	}
 
@@ -652,9 +709,121 @@ func (p *Plugin) _createABook(book *Book) (string, error) {
 			invPost: postInv,
 		},
 	); err != nil {
-		p._rollBackCreated(created)
+		if err := p._rollBackCreated(created); err != nil {
+			return "", errors.Wrapf(err, "Fatal Error: rollback error by updating created post error.")
+		}
 		return "", errors.Wrapf(err, "update created post error.")
 	}
 
 	return postPub.Id, nil
+}
+
+type fetchOptions struct {
+	fetchPub   bool
+	fetchPri   bool
+	fetchInv   bool
+	keeperUser string
+}
+
+func (p *Plugin) _fetchBooks(booksJson string, opt fetchOptions) (Messages, error) {
+
+	var (
+		books  []*Book
+		retErr error
+	)
+
+	messages := Messages{}
+
+	if err := json.Unmarshal([]byte(booksJson), &books); err != nil {
+		return nil, errors.Wrapf(err, "convert to books error in fetching books.")
+	}
+
+	for _, book := range books {
+		id, bookmsg, err := p._fetchABook(book, opt)
+		if err != nil {
+			retErr = errors.New("some error was occurred in fetching books.")
+		}
+		mj, _ := json.Marshal(bookmsg)
+		messages[id] = string(mj)
+	}
+
+	return messages, retErr
+}
+
+func (p *Plugin) _fetchABook(book *Book, opt fetchOptions) (id string, bm *BooksMessage, retErr error) {
+
+	var bookupl *Upload
+	if book.Upload == nil {
+		retErr = errors.New("upload section must not be empty")
+		return
+	} else {
+		bookupl = book.Upload
+	}
+
+	if bookupl.Post_id == "" {
+		retErr = errors.New("post id in upload section must not be empty")
+		return
+	}
+
+	info, retErr := p.GetABook(bookupl.Post_id)
+	if retErr != nil {
+		retErr = errors.Wrapf(retErr, "get a book error.")
+		return
+	}
+
+	id = info.book.BookPublic.Id
+	savePri := info.book.BookPrivate
+	saveInv := info.book.BookInventory
+
+	if !opt.fetchPub {
+		info.book.BookPublic = nil
+	}
+
+	if !opt.fetchPri {
+		info.book.BookPrivate = nil
+	}
+
+	if !opt.fetchInv {
+		info.book.BookInventory = nil
+	}
+
+	copyKeeperMap := map[string]Keeper{}
+        copies := BookCopies{}
+        
+	if opt.keeperUser != "" {
+		for copyid, keeper := range savePri.CopyKeeperMap {
+			if keeper.User == opt.keeperUser {
+				copyKeeperMap[copyid] = keeper
+                                copies[copyid] = saveInv.Copies[copyid]
+			}
+		}
+
+		if info.book.BookPrivate == nil {
+			info.book.BookPrivate = &BookPrivate{}
+		}
+
+                info.book.BookPrivate.CopyKeeperMap = copyKeeperMap
+                
+                if info.book.BookInventory == nil{
+                        info.book.BookInventory = &BookInventory{}
+                }
+
+                info.book.BookInventory.Copies = copies
+                
+	}
+
+
+	bjson, err := json.Marshal(info.book)
+	if err != nil {
+		retErr = errors.Wrapf(retErr, "mashal error.")
+		return
+	}
+
+	bm = &BooksMessage{
+		PostId:  bookupl.Post_id,
+		Status:  BOOK_ACTION_SUCC,
+		Message: string(bjson),
+	}
+	return
+
 }

@@ -23,6 +23,7 @@ const (
 	TAG_PREFIX_KEEPER    = "#k_"
 	TAG_PREFIX_STATUS    = "#s_"
 	TAG_PREFIX_ID        = "#id_"
+	TAG_PREFIX_COPYID    = "#cp_"
 	TAG_PREFIX_C1        = "#c1_"
 	TAG_PREFIX_C2        = "#c2_"
 	TAG_PREFIX_C3        = "#c3_"
@@ -55,22 +56,42 @@ type BookPublic struct {
 	Relations          Relations `json:"relations_pub,omitempty"`
 }
 
+type Keeper struct {
+	User string `json:"user"`
+}
+
 type BookPrivate struct {
-	Name        string    `json:"name_pri,omitempty"`
-	Id          string    `json:"id_pri,omitempty"`
-	KeeperUsers []string  `json:"keeper_users"`
-	KeeperNames []string  `json:"keeper_names,omitempty"`
-	Relations   Relations `json:"relations_pri,omitempty"`
+	Name          string            `json:"name_pri,omitempty"`
+	Id            string            `json:"id_pri,omitempty"`
+	KeeperUsers   []string          `json:"keeper_users"`
+	KeeperNames   []string          `json:"keeper_names,omitempty"`
+	CopyKeeperMap map[string]Keeper `json:"copy_keeper_map"`
+	Relations     Relations         `json:"relations_pri,omitempty"`
+}
+
+const (
+	COPY_STATUS_INSTOCK  = "in_stock"
+	COPY_STATUS_TRANSIN  = "transmit_in"
+	COPY_STATUS_TRANSOUT = "transmit_out"
+	COPY_STATUS_LENDING  = "lending"
+)
+
+//map CopyId
+type BookCopies map[string]BookCopy
+
+type BookCopy struct {
+	Status string `json:"status"`
 }
 
 type BookInventory struct {
-	Name        string    `json:"name_inv,omitempty"`
-	Id          string    `json:"id_inv,omitempty"`
-	Stock       int       `json:"stock"`
-	TransmitOut int       `json:"transmit_out"`
-	Lending     int       `json:"lending"`
-	TransmitIn  int       `json:"transmit_in"`
-	Relations   Relations `json:"relations_inv,omitempty"`
+	Name        string     `json:"name_inv,omitempty"`
+	Id          string     `json:"id_inv,omitempty"`
+	Stock       int        `json:"stock"`
+	TransmitOut int        `json:"transmit_out"`
+	Lending     int        `json:"lending"`
+	TransmitIn  int        `json:"transmit_in"`
+	Copies      BookCopies `json:"copies"`
+	Relations   Relations  `json:"relations_inv,omitempty"`
 }
 
 type Upload struct {
@@ -81,6 +102,7 @@ type Upload struct {
 
 const (
 	BOOKS_ACTION_UPLOAD = "UPLOAD"
+	BOOKS_ACTION_FETCH_INV_KEEPER = "FETCH_INV_KEEPER"
 )
 
 type BooksRequest struct {
@@ -125,6 +147,7 @@ type WorkflowRequest struct {
 	NextStepIndex int    `json:"next_step_index"`
 	Delete        bool   `json:"delete"`
 	Backward      bool   `json:"backward"`
+	ChosenCopyId  string `json:"chosen_copy_id"`
 }
 
 //The key role is library worker(libworker). it is the cross-point in the workflow
@@ -159,6 +182,7 @@ type BorrowRequest struct {
 	LibworkerName string   `json:"libworker_name"`
 	KeeperUsers   []string `json:"keeper_users,omitempty"`
 	KeeperNames   []string `json:"keeper_names,omitempty"`
+	ChosenCopyId  string   `json:"chosen_copy_id"`
 	Worflow       []Step   `json:"workflow"`
 	StepIndex     int      `json:"step_index"`
 	RenewedTimes  int      `json:"renewed_times"`
@@ -187,6 +211,8 @@ type Config struct {
 const (
 	BOOK_UPLOAD_ERROR = "error"
 	BOOK_UPLOAD_SUCC  = "ok"
+	BOOK_ACTION_SUCC  = "ok"
+	BOOK_ACTION_ERROR = "error"
 )
 
 type BooksMessage struct {
@@ -203,9 +229,10 @@ type Result struct {
 }
 
 var (
-	ErrBorrowingLimited = errors.New("borrowing-book-limited")
-	ErrLocked           = errors.New("record-locked")
-	ErrNotFound         = errors.New("not-found")
-	ErrNoStock          = errors.New("no-stock")
-	ErrRenewLimited     = errors.New("renew-limited")
+	ErrBorrowingLimited  = errors.New("borrowing-book-limited")
+	ErrLocked            = errors.New("record-locked")
+	ErrNotFound          = errors.New("not-found")
+	ErrNoStock           = errors.New("no-stock")
+	ErrRenewLimited      = errors.New("renew-limited")
+	ErrChooseInStockCopy = errors.New("choose-in-stock")
 )
