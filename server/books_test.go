@@ -134,7 +134,10 @@ func TestBooks(t *testing.T) {
 			},
 			&BookPrivate{
 				KeeperUsers: []string{"kpuser1", "kpuser2"},
-				KeeperNames: []string{"kpname1", "kpname2"},
+				KeeperInfos: KeeperInfoMap{
+					"kpuser1": {"kpname1"},
+					"kpuser2": {"kpname2"},
+				},
 				CopyKeeperMap: map[string]Keeper{
 					"zzh-book-002 b1":  {User: "kpuser1"},
 					"zzh-book-002 b2":  {User: "kpuser1"},
@@ -224,8 +227,9 @@ func TestBooks(t *testing.T) {
 					Id:          "zzh-book-001",
 					Name:        "a test book",
 					KeeperUsers: []string{"kpuser1", "kpuser2"},
-					KeeperNames: []string{
-						"kpname1", "kpname2",
+					KeeperInfos: KeeperInfoMap{
+						"kpuser1": {"kpname1"},
+						"kpuser2": {"kpname2"},
 					},
 					CopyKeeperMap: map[string]Keeper{
 						"zzh-book-001 b1": {User: "kpuser1"},
@@ -295,7 +299,10 @@ func TestBooks(t *testing.T) {
 					Id:          "zzh-book-002",
 					Name:        "a second test book",
 					KeeperUsers: []string{"kpuser1", "kpuser2"},
-					KeeperNames: []string{"kpname1", "kpname2"},
+					KeeperInfos: KeeperInfoMap{
+						"kpuser1": {"kpname1"},
+						"kpuser2": {"kpname2"},
+					},
 					CopyKeeperMap: map[string]Keeper{
 						"zzh-book-002 b1":  {User: "kpuser1"},
 						"zzh-book-002 b2":  {User: "kpuser1"},
@@ -805,7 +812,9 @@ func TestBooks(t *testing.T) {
 		DeepCopy(&expectBooks, &someBooksInDB)
 		expectBooks[0].BookPublic.Author = "new Author"
 		expectBooks[0].BookPrivate.KeeperUsers = []string{td.ABook.KeeperUsers[1]}
-		expectBooks[0].BookPrivate.KeeperNames = []string{td.ABook.KeeperNames[1]}
+		expectBooks[0].BookPrivate.KeeperInfos = KeeperInfoMap{
+			td.ABook.KeeperUsers[1]: td.ABook.KeeperInfos[td.ABook.KeeperUsers[1]],
+		}
 		expectBooks[0].BookInventory.Stock = 4
 		expectBooks[0].BookInventory.TransmitOut = 2
 		expectBooks[0].BookInventory.Lending = 1
@@ -823,7 +832,9 @@ func TestBooks(t *testing.T) {
 
 		expectBooks[1].BookPublic.Author = "new Author 2"
 		expectBooks[1].BookPrivate.KeeperUsers = []string{td.ABook.KeeperUsers[0]}
-		expectBooks[1].BookPrivate.KeeperNames = []string{td.ABook.KeeperNames[0]}
+		expectBooks[1].BookPrivate.KeeperInfos = KeeperInfoMap{
+			td.ABook.KeeperUsers[0]: td.ABook.KeeperInfos[td.ABook.KeeperUsers[0]],
+		}
 		expectBooks[1].BookInventory.Stock = 0
 		expectBooks[1].BookInventory.TransmitOut = 3
 		expectBooks[1].BookInventory.Lending = 2
@@ -1630,6 +1641,9 @@ func TestBooks(t *testing.T) {
 		}
 
 		b1.BookPrivate = &BookPrivate{
+			KeeperInfos: KeeperInfoMap{
+				td.ABook.KeeperUsers[0]: td.ABook.KeeperInfos[td.ABook.KeeperUsers[0]],
+			},
 			CopyKeeperMap: copyKeeperMap,
 		}
 

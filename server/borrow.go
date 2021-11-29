@@ -371,11 +371,11 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 		if masterBr == nil {
 
 			bq.KeeperUsers = book.KeeperUsers
-			bq.KeeperNames = book.KeeperNames
+			bq.KeeperInfos = book.KeeperInfos
 		} else {
 
 			bq.KeeperUsers = masterBr.KeeperUsers
-			bq.KeeperNames = masterBr.KeeperNames
+			bq.KeeperInfos = masterBr.KeeperInfos
 		}
 		for _, k := range bq.KeeperUsers {
 			bq.Tags = append(bq.Tags, TAG_PREFIX_KEEPER+k)

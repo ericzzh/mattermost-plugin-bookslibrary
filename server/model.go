@@ -60,11 +60,16 @@ type Keeper struct {
 	User string `json:"user"`
 }
 
+type KeeperInfo struct {
+	Name string `json:"name"`
+}
+type KeeperInfoMap map[string]KeeperInfo
+
 type BookPrivate struct {
 	Name          string            `json:"name_pri,omitempty"`
 	Id            string            `json:"id_pri,omitempty"`
 	KeeperUsers   []string          `json:"keeper_users"`
-	KeeperNames   []string          `json:"keeper_names,omitempty"`
+	KeeperInfos   KeeperInfoMap     `json:"keeper_infos,omitempty"`
 	CopyKeeperMap map[string]Keeper `json:"copy_keeper_map"`
 	Relations     Relations         `json:"relations_pri,omitempty"`
 }
@@ -101,7 +106,7 @@ type Upload struct {
 }
 
 const (
-	BOOKS_ACTION_UPLOAD = "UPLOAD"
+	BOOKS_ACTION_UPLOAD           = "UPLOAD"
 	BOOKS_ACTION_FETCH_INV_KEEPER = "FETCH_INV_KEEPER"
 )
 
@@ -172,21 +177,21 @@ type Step struct {
 
 type BorrowRequest struct {
 	//Make name first so as to show the JSON's name in changed thread view
-	BookName      string   `json:"book_name"`
-	Author        string   `json:"author"`
-	BookPostId    string   `json:"book_post_id"`
-	BookId        string   `json:"book_id"`
-	BorrowerUser  string   `json:"borrower_user"`
-	BorrowerName  string   `json:"borrower_name"`
-	LibworkerUser string   `json:"libworker_user"`
-	LibworkerName string   `json:"libworker_name"`
-	KeeperUsers   []string `json:"keeper_users,omitempty"`
-	KeeperNames   []string `json:"keeper_names,omitempty"`
-	ChosenCopyId  string   `json:"chosen_copy_id"`
-	Worflow       []Step   `json:"workflow"`
-	StepIndex     int      `json:"step_index"`
-	RenewedTimes  int      `json:"renewed_times"`
-	Tags          []string `json:"tags"`
+	BookName      string        `json:"book_name"`
+	Author        string        `json:"author"`
+	BookPostId    string        `json:"book_post_id"`
+	BookId        string        `json:"book_id"`
+	BorrowerUser  string        `json:"borrower_user"`
+	BorrowerName  string        `json:"borrower_name"`
+	LibworkerUser string        `json:"libworker_user"`
+	LibworkerName string        `json:"libworker_name"`
+	KeeperUsers   []string      `json:"keeper_users,omitempty"`
+	KeeperInfos   KeeperInfoMap `json:"keeper_infos,omitempty"`
+	ChosenCopyId  string        `json:"chosen_copy_id"`
+	Worflow       []Step        `json:"workflow"`
+	StepIndex     int           `json:"step_index"`
+	RenewedTimes  int           `json:"renewed_times"`
+	Tags          []string      `json:"tags"`
 }
 
 type Borrow struct {

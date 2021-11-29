@@ -35,6 +35,15 @@ import Accordion from "@material-ui/core/Accordion";
 import AccordionSummary from "@material-ui/core/AccordionSummary";
 import AccordionDetails from "@material-ui/core/AccordionDetails";
 import ExpandMoreIcon from "@material-ui/icons/ExpandMore";
+import Dialog from "@material-ui/core/Dialog";
+import DialogActions from "@material-ui/core/DialogActions";
+import DialogContent from "@material-ui/core/DialogContent";
+import DialogTitle from "@material-ui/core/DialogTitle";
+import FormControl from "@material-ui/core/FormControl";
+import Select from "@material-ui/core/Select";
+import InputLabel from "@material-ui/core/InputLabel";
+import Input from "@material-ui/core/Input";
+
 import {
     fetchConfig,
     getExpireDays,
@@ -48,7 +57,7 @@ import InProgress from "./InProgress";
 import MsgBox, { MsgBoxProps, useMessageUtils } from "./MsgBox";
 import Image from "./Image";
 import BookIcon from "@material-ui/icons/Book";
-import { Template } from "../utils";
+import { Template, ExistedInArray } from "../utils";
 
 const STATUS_REQUESTED = "R";
 const STATUS_CONFIRMED = "C";
@@ -63,6 +72,9 @@ const STATUS_RETURNED = "RT";
 const WORKFLOW_BORROW = "BORROW";
 const WORKFLOW_RENEW = "RENEW";
 const WORKFLOW_RETURN = "RETURN";
+
+const MESSAGE_STATUS_OK = "ok";
+const MESSAGE_STATUS_ERR = "error";
 
 // const { formatText, messageHtmlToComponent } = window.PostUtils;
 
@@ -109,10 +121,97 @@ const TEXT: Record<string, string> = {
     REJECT: "拒绝",
     DISTANCE_TO_RETRUN: "距还书还有%v天",
     DISTANCE_AFTER_RETRUN: "已超还书日%v天",
+    TITLE_CHOOSE_COPYID: "选择在库书册编号",
+    LABEL_COPYID: "书册编号",
+    LABEL_OK: "确认",
+    LABEL_CANCEL: "取消",
+    INV_KEEPER_ERROR: "书册编号取得失败",
+    NO_INSTOCK_COPY: "没有在库的书册",
 };
 
 function FindStatusInWorkflow(status: string, workflow: Step[]) {
     return workflow.find((step) => step.status === status);
+}
+
+type CopiesInStock = {
+    keeperName: string;
+    copyid: string;
+};
+type SelectCopyIdDialogProps = {
+    open: boolean;
+    onClose: () => void;
+    setCopyId: (chosen: string) => void;
+    inStockCopies: CopiesInStock[];
+};
+
+function SelectCopyIdDialog(props: SelectCopyIdDialogProps) {
+    const { open, setCopyId, onClose, inStockCopies } = props;
+    const [selected, setSelected] = React.useState(inStockCopies[0].copyid);
+    const handleChange = (event: React.ChangeEvent<{ value: unknown }>) => {
+        setSelected(String(event.target.value) || "");
+    };
+    const handleClose = () => {
+        onClose();
+    };
+    const StyledFormControl = styled(FormControl)(() => {
+        return {
+            width: "100%",
+        };
+    });
+    const handleOk = () => {
+        setCopyId(selected);
+        onClose();
+    };
+
+    const byKeepers: { [key: string]: string[] } = {};
+
+    for (const copies of inStockCopies) {
+        if (!byKeepers[copies.keeperName]) {
+            byKeepers[copies.keeperName] = [];
+        }
+        byKeepers[copies.keeperName].push(copies.copyid);
+    }
+
+    const options: JSX.Element[] = [];
+    for (const keeper in byKeepers) {
+        byKeepers[keeper].sort();
+        options.push(
+            <optgroup label={keeper}>
+                {byKeepers[keeper].map((copyid) => (
+                    <option value={copyid}>{copyid}</option>
+                ))}
+            </optgroup>
+        );
+    }
+
+    return (
+        <Dialog open={open} onClose={handleClose}>
+            <DialogTitle>{TEXT["TITLE_CHOOSE_COPYID"]}</DialogTitle>
+            <DialogContent>
+                <StyledFormControl>
+                    <InputLabel htmlFor="copyid-dialog">
+                        {TEXT["LABEL_COPYID"]}
+                    </InputLabel>
+                    <Select
+                        native
+                        value={selected}
+                        onChange={handleChange}
+                        input={<Input id="copyid-dialog" />}
+                    >
+                        {options}
+                    </Select>
+                </StyledFormControl>
+                <DialogActions>
+                    <Button onClick={handleClose} color="primary">
+                        {TEXT["LABEL_CANCEL"]}
+                    </Button>
+                    <Button onClick={handleOk} color="primary">
+                        {TEXT["LABEL_OK"]}
+                    </Button>
+                </DialogActions>
+            </DialogContent>
+        </Dialog>
+    );
 }
 
 function BorrowType(props: any) {
@@ -190,6 +289,13 @@ function BorrowType(props: any) {
     // );
     //
 
+    //Open copyid selection dialog
+    const [open, setOpen] = React.useState(false);
+
+    //Chosen copy id
+    const [chosenCopyId, setChosenCopyId] = React.useState("");
+    const copiesInStock = React.useRef<Array<CopiesInStock>>([]);
+
     //Parsing message
     let borrow: Borrow;
     let borrowReq: BorrowRequest;
@@ -230,7 +336,6 @@ function BorrowType(props: any) {
             },
         };
     });
-
 
     type distance = {
         active: boolean;
@@ -526,20 +631,20 @@ function BorrowType(props: any) {
                 />
             </Grid>
             <Grid item>
-                {borrow.dataOrImage.keeper_names?.map((keeper_name, i) => (
-                    <Chip
-                        size={"medium"}
-                        // variant={"outlined"}
-                        icon={<HouseIcon />}
-                        color="primary"
-                        label={keeper_name}
-                        className={"PaticipantCommon PaticipantKeeper"}
-                        clickable
-                        onClick={handleRoleUserClick(
-                            borrow.dataOrImage.keeper_users[i]
-                        )}
-                    />
-                ))}
+                {borrow.dataOrImage.keeper_infos && Object.entries(borrow.dataOrImage.keeper_infos).map(
+                    ([user, info]) => (
+                        <Chip
+                            size={"medium"}
+                            // variant={"outlined"}
+                            icon={<HouseIcon />}
+                            color="primary"
+                            label={info.name}
+                            className={"PaticipantCommon PaticipantKeeper"}
+                            clickable
+                            onClick={handleRoleUserClick(user)}
+                        />
+                    )
+                )}
             </Grid>
         </Grid>
     );
@@ -682,7 +787,7 @@ function BorrowType(props: any) {
             "& .MuiStepLabel-label": {
                 fontSize: "1.2rem",
             },
-            padding:"15px",
+            padding: "15px",
         };
     });
 
@@ -690,7 +795,7 @@ function BorrowType(props: any) {
         return {
             marginLeft: 10,
             marginTop: 10,
-            width: "10rem",
+            width: "7rem",
             alignSelf: "flex-end",
         };
     });
@@ -862,6 +967,7 @@ function BorrowType(props: any) {
             act_user: currentUser.username,
             next_step_index: nextStepIndex,
             backward: backward,
+            chosen_copy_id: chosenCopyId,
         };
 
         try {
@@ -914,9 +1020,11 @@ function BorrowType(props: any) {
         let btns: React.ReactElement[] = [];
 
         if (
-            currentStep.actor_role === "LIBWORKER" &&
-            currentStep.status !== STATUS_REQUESTED &&
-            currentStep.status !== STATUS_RETURNED
+            (ExistedInArray(["MASTER"], borrow.role) &&
+                currentStep.status !== STATUS_REQUESTED) ||
+            (currentStep.actor_role === "LIBWORKER" &&
+                currentStep.status !== STATUS_REQUESTED &&
+                currentStep.status !== STATUS_RETURNED)
         ) {
             btns.push(
                 <StyledWFButton
@@ -954,7 +1062,7 @@ function BorrowType(props: any) {
         return btns;
     };
 
-    const showWfButtons = () => {
+    const stepRoleMatchOrMaster = () => {
         if (
             borrow.role.findIndex((role) => {
                 return currentStep.actor_role === role || role === "MASTER";
@@ -963,6 +1071,123 @@ function BorrowType(props: any) {
             return true;
         }
         return false;
+    };
+
+    const openSelectCopyidDialog = async () => {
+        const book: BookRequestBody[] = [
+            {
+                post_id: borrow.relations_keys.book,
+            },
+        ];
+
+        const body = JSON.stringify(book);
+
+        const request: BooksRequest = {
+            action: "FETCH_INV_KEEPER",
+            act_user: currentUser.username,
+            body: body,
+        };
+
+        try {
+            setLoading(true);
+
+            const data = await Client4.doFetch<Result>(
+                `/plugins/${manifest.id}/books`,
+                {
+                    method: "POST",
+                    body: JSON.stringify(request),
+                }
+            );
+
+            setLoading(false);
+            if (data.error) {
+                mutil.setMsgBox({
+                    open: true,
+                    text: TEXT["INV_KEEPER_ERROR"] + data.error,
+                    serverity: "error",
+                });
+                console.error(data);
+                return;
+            }
+
+            copiesInStock.current = [];
+            for (const bookId in data.messages) {
+                const bookMessage: BookMessage = JSON.parse(
+                    data.messages[bookId]
+                );
+                if (bookMessage.status !== MESSAGE_STATUS_OK) {
+                    console.log(`Error message record: ${bookMessage}`);
+                    continue;
+                }
+                const book: Book = JSON.parse(bookMessage.message);
+                for (const copyid in book.copies) {
+                    if (book.copies[copyid].status === "in_stock") {
+                        copiesInStock.current.push({
+                            keeperName:
+                                book.keeper_infos[
+                                    book.copy_keeper_map[copyid].user
+                                ].name,
+                            copyid: copyid,
+                        });
+                    }
+                }
+            }
+
+            if (!copiesInStock) {
+                mutil.setMsgBox({
+                    open: true,
+                    text: TEXT["NO_INSTOCK_COPY"],
+                    serverity: "error",
+                });
+            }
+
+            copiesInStock.current.sort();
+        } catch (e) {
+            setLoading(false);
+
+            mutil.setMsgBox({
+                open: true,
+                text: TEXT["INV_KEEPER_ERROR"] + e,
+                serverity: "error",
+            });
+            console.error(e);
+            return;
+        }
+
+        setOpen(true);
+    };
+    const onClose = () => setOpen(false);
+
+    const selectCopyIdButton = (clickable: boolean) => (
+        <Grid container justifyContent={"flex-end"}>
+            <Chip
+                size={"small"}
+                variant={"outlined"}
+                color="primary"
+                label={
+                    chosenCopyId ||
+                    borrow.dataOrImage.chosen_copy_id ||
+                    TEXT["TITLE_CHOOSE_COPYID"]
+                }
+                clickable={clickable}
+                onClick={clickable ? openSelectCopyidDialog : undefined}
+            />
+        </Grid>
+    );
+
+    const showCopySelection = () => {
+        switch (currentStep.status) {
+            case STATUS_REQUESTED:
+                return null;
+            case STATUS_CONFIRMED:
+                if (stepRoleMatchOrMaster()) {
+                    return selectCopyIdButton(true);
+                } else {
+                    return null;
+                }
+            default:
+                return selectCopyIdButton(false);
+        }
     };
 
     const borWorkflow = (
@@ -985,7 +1210,8 @@ function BorrowType(props: any) {
                     </Step>
                 ))}
             </StyledWFStepper>
-            {showWfButtons() && (
+            {showCopySelection()}
+            {stepRoleMatchOrMaster() && (
                 <Grid container justifyContent={"flex-end"}>
                     {addStepButtons()}
                 </Grid>
@@ -1041,6 +1267,14 @@ function BorrowType(props: any) {
             </StyledPaper>
             {loading && <InProgress open={loading} />}
             <MsgBox {...mutil.msgBox} close={mutil.onCloseMsg} />
+            {open && (
+                <SelectCopyIdDialog
+                    open={open}
+                    setCopyId={setChosenCopyId}
+                    onClose={onClose}
+                    inStockCopies={copiesInStock.current}
+                />
+            )}
         </StylesProvider>
     );
 }

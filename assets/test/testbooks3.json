@@ -1,7 +1,7 @@
 [
   {
         "id_pub":"zzh-book-002",
-        "name_pub":"测试二书",
+        "name_pub":"测试二书(Three Roles)",
         "name_en":"a test book",
         "category1":"C1",
         "category2":"C2",
@@ -24,10 +24,10 @@
         "transmit_in":0,
         "copy_keeper_map":{
             "zzh-book-001 b1":{
-                "user":"ericzzh2"
+                "user":"ericzzh3"
             },
             "zzh-book-001 b2":{
-                "user":"ericzzh2"
+                "user":"ericzzh3"
             },
             "zzh-book-001 b3":{
                 "user":"ericzzh3"

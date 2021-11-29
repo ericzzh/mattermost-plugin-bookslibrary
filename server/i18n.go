@@ -25,6 +25,9 @@ var TEXTJSON = `
       },
       "renew-limited":{
         "zh":"到达续借上限"
+      },
+      "choose-in-stock":{
+        "zh":"没有选择书册编号"
       }
     }
 `

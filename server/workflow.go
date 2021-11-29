@@ -91,9 +91,19 @@ func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter,
 
 	if err := p._process(workflowReq, all, bookInfo); err != nil {
 		p.API.LogError("Process  error.", "error", err.Error())
+		var errText string
+		switch {
+		case errors.Is(err, ErrChooseInStockCopy):
+			errText = p.i18n.GetText(err.Error())
+		case errors.Is(err, ErrNoStock):
+			errText = p.i18n.GetText(err.Error())
+		default:
+			errText = err.Error()
+		}
+
 		resp, _ := json.Marshal(Result{
 			// Error: fmt.Sprintf("process error."),
-			Error: err.Error(),
+			Error: errText,
 		})
 
 		w.Write(resp)
@@ -128,24 +138,45 @@ func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter,
 
 }
 
-func (p *Plugin) _initChecked(workflow []Step, fromStep Step, toStep Step, checked map[string]struct{}) {
+type _initPassedParams struct {
+	tempPassed map[string]struct{}
+}
 
-	checked[fromStep.Status] = struct{}{}
+func (p *Plugin) _initPassed(workflow []Step, fromStep Step, toStep Step, passed map[string]struct{}, params ..._initPassedParams) {
+
+	var tempPassed map[string]struct{}
+
+	if params != nil {
+		if params[0].tempPassed == nil {
+			tempPassed = map[string]struct{}{}
+		} else {
+			DeepCopy(&tempPassed, &params[0].tempPassed)
+		}
+	} else {
+		tempPassed = map[string]struct{}{}
+	}
 
 	if fromStep.NextStepIndex == nil {
 		return
 	}
 
+	tempPassed[fromStep.Status] = struct{}{}
+
 	if fromStep.Status == toStep.Status {
+		for passedStatus := range tempPassed {
+			passed[passedStatus] = struct{}{}
+		}
 		return
 	}
 
 	for _, i := range fromStep.NextStepIndex {
 		nextStep := workflow[i]
-		if _, ok := checked[nextStep.Status]; ok {
+		if _, ok := tempPassed[nextStep.Status]; ok {
 			return
 		}
-		p._initChecked(workflow, nextStep, toStep, checked)
+		p._initPassed(workflow, nextStep, toStep, passed, _initPassedParams{
+			tempPassed: tempPassed,
+		})
 	}
 
 }
@@ -337,6 +368,14 @@ func (p *Plugin) _processRenewOfSingleStep(br *borrowWithPost, workflow []Step, 
 	return nil
 }
 
+func (p *Plugin) _getKeeperUserByCopyId(copyId string, bookInfo *bookInfo) (string, error) {
+	if keeper, ok := bookInfo.book.BookPrivate.CopyKeeperMap[copyId]; ok {
+		return keeper.User, nil
+	} else {
+		return "", errors.New("can't find keeper by copyid:" + copyId)
+	}
+}
+
 func (p *Plugin) _processSyncKeeper(req *WorkflowRequest, masterBr *borrowWithPost,
 	currStep *Step, nextStep *Step, bookInfo *bookInfo) error {
 
@@ -347,12 +386,16 @@ func (p *Plugin) _processSyncKeeper(req *WorkflowRequest, masterBr *borrowWithPo
 
 	if !req.Backward && nextStep.Status == STATUS_KEEPER_CONFIRMED {
 		//ignore(delete) other keepers relations
-		masterBr.borrow.DataOrImage.KeeperUsers = []string{req.ActorUser}
-		keeperName, err := p._getDisplayNameByUser(req.ActorUser)
+		keeperUser, err := p._getKeeperUserByCopyId(req.ChosenCopyId, bookInfo)
 		if err != nil {
-			return errors.Errorf("can't find actor name. actor: %v", req.ActorUser)
+			return err
 		}
-		masterBr.borrow.DataOrImage.KeeperNames = []string{keeperName}
+		masterBr.borrow.DataOrImage.KeeperUsers = []string{keeperUser}
+		keeperName, err := p._getDisplayNameByUser(keeperUser)
+		if err != nil {
+			return errors.Errorf("can't find keeper name. keeper: %v", keeperUser)
+		}
+		masterBr.borrow.DataOrImage.KeeperInfos = KeeperInfoMap{keeperUser: {keeperName}}
 		masterBr.borrow.DataOrImage.ChosenCopyId = req.ChosenCopyId
 
 		return nil
@@ -361,7 +404,7 @@ func (p *Plugin) _processSyncKeeper(req *WorkflowRequest, masterBr *borrowWithPo
 	if req.Backward && currStep.Status == STATUS_KEEPER_CONFIRMED {
 		//create the other keepers( backward process)
 		masterBr.borrow.DataOrImage.KeeperUsers = bookInfo.book.KeeperUsers
-		masterBr.borrow.DataOrImage.KeeperNames = bookInfo.book.KeeperNames
+		masterBr.borrow.DataOrImage.KeeperInfos = bookInfo.book.KeeperInfos
 		masterBr.borrow.DataOrImage.ChosenCopyId = ""
 
 		return nil
@@ -522,14 +565,14 @@ func (p *Plugin) _copyFromMasterAndMark(all map[string][]*borrowWithPost, bookIn
 				keeper.delete = true
 			}
 
-// 			newKeys := []string{}
-// 			for _, key := range master.borrow.RelationKeys.Keepers {
-// 				if key != keeper.post.Id {
-// 					newKeys = append(newKeys, key)
-// 				}
-// 			}
-// 
-// 			master.borrow.RelationKeys.Keepers = newKeys
+			// 			newKeys := []string{}
+			// 			for _, key := range master.borrow.RelationKeys.Keepers {
+			// 				if key != keeper.post.Id {
+			// 					newKeys = append(newKeys, key)
+			// 				}
+			// 			}
+			//
+			// 			master.borrow.RelationKeys.Keepers = newKeys
 		}
 	}
 
@@ -603,9 +646,9 @@ func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost
 		br.borrow.DataOrImage.StepIndex = req.NextStepIndex
 		p._resetMasterTags(br.borrow.DataOrImage)
 
-		checked := map[string]struct{}{}
-		p._initChecked(workflow, workflow[0], *nextStep, checked)
-		p._clearNextSteps(nextStep, workflow, checked)
+		passed := map[string]struct{}{}
+		p._initPassed(workflow, workflow[0], *nextStep, passed)
+		p._clearNextSteps(nextStep, workflow, passed)
 	}
 
 	//Set other roles' borrow request
@@ -622,6 +665,7 @@ func (p *Plugin) _deleteBorrowRequest(req *WorkflowRequest, all map[string][]*bo
 	ix := ms.borrow.DataOrImage.StepIndex
 	cs := ms.borrow.DataOrImage.Worflow[ix]
 	st := cs.Status
+	savedDeleted := map[string]bool{}
 
 	if st != STATUS_REQUESTED &&
 		st != STATUS_CONFIRMED &&
@@ -674,9 +718,14 @@ func (p *Plugin) _deleteBorrowRequest(req *WorkflowRequest, all map[string][]*bo
 
 					}
 				}
+				if _, ok := savedDeleted[brwp.post.Id]; ok {
+					continue
+				}
 				if appErr := p.API.DeletePost(brwp.post.Id); appErr != nil {
 					return errors.Wrapf(appErr, "delete error, please retry or contact admin")
 				}
+				savedDeleted[brwp.post.Id] = true
+
 			}
 		}
 	}
@@ -697,10 +746,10 @@ func (p *Plugin) _getUserByRole(step Step, brqRole string, brq *BorrowRequest) [
 		}
 		return []string{brq.LibworkerUser}
 	case KEEPER:
-		if len(brq.KeeperNames) == 0 {
+		if len(brq.KeeperUsers) == 0 {
 			return nil
 		}
-		return brq.KeeperNames
+		return brq.KeeperUsers
 	}
 
 	return nil
@@ -745,6 +794,7 @@ func (p *Plugin) _loadAndLock(req *WorkflowRequest) (map[string][]*borrowWithPos
 	allBorrows[MASTER] = append(allBorrows[MASTER], master)
 
 	lockedIds := map[string]bool{}
+	savedBr := map[string]*borrowWithPost{}
 
 	for _, role := range []struct {
 		name string
@@ -768,6 +818,9 @@ func (p *Plugin) _loadAndLock(req *WorkflowRequest) (map[string][]*borrowWithPos
 			//for the case of same roles, the id is the same,
 			//so we have to check this
 			if _, ok := lockedIds[id]; ok {
+				if br, ok := savedBr[id]; ok {
+					allBorrows[role.name] = append(allBorrows[role.name], br)
+				}
 				continue
 			}
 			if _, ok := lockmap.LoadOrStore(id, struct{}{}); ok {
@@ -786,6 +839,7 @@ func (p *Plugin) _loadAndLock(req *WorkflowRequest) (map[string][]*borrowWithPos
 				}
 			}
 			allBorrows[role.name] = append(allBorrows[role.name], br)
+			savedBr[id] = br
 		}
 
 	}

@@ -589,13 +589,15 @@ func (p *Plugin) _fillABookCommon(book *Book) error {
 		bookpri.Id = bookpub.Id
 		bookpri.Name = bookpub.Name
 
-		bookpri.KeeperNames = []string{}
+		bookpri.KeeperInfos = KeeperInfoMap{}
 		for _, username := range bookpri.KeeperUsers {
 			disName, err := p._getDisplayNameByUser(username)
 			if err != nil {
 				return err
 			}
-			bookpri.KeeperNames = append(bookpri.KeeperNames, disName)
+			bookpri.KeeperInfos[username] = KeeperInfo{
+				Name: disName,
+			}
 		}
 	}
 
@@ -788,13 +790,13 @@ func (p *Plugin) _fetchABook(book *Book, opt fetchOptions) (id string, bm *Books
 	}
 
 	copyKeeperMap := map[string]Keeper{}
-        copies := BookCopies{}
-        
+	copies := BookCopies{}
+
 	if opt.keeperUser != "" {
 		for copyid, keeper := range savePri.CopyKeeperMap {
 			if keeper.User == opt.keeperUser {
 				copyKeeperMap[copyid] = keeper
-                                copies[copyid] = saveInv.Copies[copyid]
+				copies[copyid] = saveInv.Copies[copyid]
 			}
 		}
 
@@ -802,16 +804,19 @@ func (p *Plugin) _fetchABook(book *Book, opt fetchOptions) (id string, bm *Books
 			info.book.BookPrivate = &BookPrivate{}
 		}
 
-                info.book.BookPrivate.CopyKeeperMap = copyKeeperMap
-                
-                if info.book.BookInventory == nil{
-                        info.book.BookInventory = &BookInventory{}
+                info.book.BookPrivate.KeeperInfos = KeeperInfoMap{
+                     opt.keeperUser:savePri.KeeperInfos[opt.keeperUser], 
                 }
 
-                info.book.BookInventory.Copies = copies
-                
-	}
+		info.book.BookPrivate.CopyKeeperMap = copyKeeperMap
 
+		if info.book.BookInventory == nil {
+			info.book.BookInventory = &BookInventory{}
+		}
+
+		info.book.BookInventory.Copies = copies
+
+	}
 
 	bjson, err := json.Marshal(info.book)
 	if err != nil {

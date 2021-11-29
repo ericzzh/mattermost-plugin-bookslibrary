@@ -18,7 +18,13 @@ type STATUS =
     | STATUS_RETURN_CONFIRMED
     | STATUS_RETURNED;
 
-interface Book {
+type BookRequestBody = {
+    post_id: string;
+};
+
+type Book = BookPublic & BookPrivate & BookInventory;
+
+interface BookPublic {
     id_pub: string;
     name_pub: string;
     name_en: string;
@@ -54,16 +60,31 @@ interface BookInventory {
     transmit_out: string;
     lending: string;
     transmit_in: string;
+    copies: {
+        [key: string]: {
+            status: string;
+        };
+    };
     relations_inv: {
         public: string;
     };
 }
 
+interface KeeperInfos {
+    [key: string]: {
+        name: string;
+    };
+}
 interface BookPrivate {
     id_pri: string;
     name_pri: string;
     keeper_users: string[];
-    keeper_names: string[];
+    keeper_infos: KeeperInfos;
+    copy_keeper_map: {
+        [key: string]: {
+            user: string;
+        };
+    };
     relations_pri: {
         public: string;
     };
@@ -116,7 +137,8 @@ interface BorrowRequest {
     libworker_user: string;
     libworker_name: string;
     keeper_users: string[];
-    keeper_names: string[];
+    keeper_infos: KeeperInfos;
+    chosen_copy_id: string;
     workflow: Step[];
     step_index: number;
     renewed_times: number;
@@ -144,4 +166,5 @@ interface WorkflowRequest {
     next_step_index?: number;
     delete?: boolean;
     backward?: boolean;
+    chosen_copy_id?: string;
 }

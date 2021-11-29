@@ -119,7 +119,10 @@ func NewTestData(bookInject ...bookInjectOptions) *TestData {
 	}
 
 	keeperUsers := []string{"kpuser1", "kpuser2"}
-	keeperNames := []string{"kpname1", "kpname2"}
+	keeperInfos := KeeperInfoMap{
+		"kpuser1": {"kpname1"},
+		"kpuser2": {"kpname2"},
+	}
 
 	var copyKeeperMap map[string]Keeper
 	copyKeeperMap = map[string]Keeper{
@@ -130,7 +133,10 @@ func NewTestData(bookInject ...bookInjectOptions) *TestData {
 
 	if inject.keepersAsLibworkers {
 		keeperUsers = td.ABookPub.LibworkerUsers
-		keeperNames = td.ABookPub.LibworkerNames
+		keeperInfos = KeeperInfoMap{}
+		for i, user := range keeperUsers {
+			keeperInfos[user] = KeeperInfo{td.ABookPub.LibworkerNames[i]}
+		}
 		copyKeeperMap = map[string]Keeper{
 			"zzh-book-001 b1": {User: td.ABookPub.LibworkerUsers[0]},
 			"zzh-book-001 b2": {User: td.ABookPub.LibworkerUsers[0]},
@@ -142,7 +148,7 @@ func NewTestData(bookInject ...bookInjectOptions) *TestData {
 		Id:            "zzh-book-001",
 		Name:          "a test book",
 		KeeperUsers:   keeperUsers,
-		KeeperNames:   keeperNames,
+		KeeperInfos:   keeperInfos,
 		CopyKeeperMap: copyKeeperMap,
 		Relations: Relations{
 			REL_BOOK_PUBLIC: td.BookPostIdPub,
@@ -781,6 +787,84 @@ func _checkBookMessageResult(t *testing.T, w *httptest.ResponseRecorder, ifErr b
 			// assert.Containsf(t, body.Message, msg.Message, "should contain expected message")
 			assert.Equalf(t, msg.Message, body.Message, "should contain expected message")
 		}
+	}
+
+}
+
+func _initPassed(workflow []Step, fromStep Step, toStep Step, passed map[string]struct{}, params ..._initPassedParams) {
+
+	var tempPassed map[string]struct{}
+
+	if params != nil {
+		if params[0].tempPassed == nil {
+			tempPassed = map[string]struct{}{}
+		} else {
+			DeepCopy(&tempPassed, &params[0].tempPassed)
+		}
+	} else {
+		tempPassed = map[string]struct{}{}
+	}
+
+	if fromStep.NextStepIndex == nil {
+		return
+	}
+
+	tempPassed[fromStep.Status] = struct{}{}
+
+	if fromStep.Status == toStep.Status {
+                for passedStatus := range tempPassed {
+                    passed[passedStatus] = struct{}{} 
+                }
+		return
+	}
+
+	for _, i := range fromStep.NextStepIndex {
+		nextStep := workflow[i]
+		if _, ok := tempPassed[nextStep.Status]; ok {
+			return
+		}
+		_initPassed(workflow, nextStep, toStep, passed, _initPassedParams{
+			tempPassed: tempPassed,
+		})
+	}
+
+}
+
+type _assertAfterwordStepsClearedParams struct {
+	passed map[string]struct{}
+}
+
+func _assertAfterwordStepsCleared(t *testing.T, status string, wf []Step, params ..._assertAfterwordStepsClearedParams) {
+
+        index := _getIndexByStatus(status, wf)
+
+	if params == nil {
+                passed := map[string]struct{}{}         
+                _initPassed(wf, wf[0], wf[index], passed)
+		param := _assertAfterwordStepsClearedParams{
+			passed: passed,
+		}
+		_assertAfterwordStepsCleared(t, status, wf, param)
+		return
+	}
+
+	param := params[0]
+	step := wf[index]
+
+	if step.NextStepIndex == nil {
+		return
+	}
+
+	param.passed[step.Status] = struct{}{}
+
+	for _, i := range step.NextStepIndex {
+		nextStep := &wf[i]
+		if _, ok := param.passed[nextStep.Status]; ok {
+			return
+		}
+                assert.Equalf(t, int64(0), nextStep.ActionDate, "action date should be cleared, status %v, next status: %v", status, nextStep.Status)
+                assert.Equalf(t, false, nextStep.Completed, "completed should be false, status %v, next status: %v", status, nextStep.Status)
+		_assertAfterwordStepsCleared(t, wf[i].Status, wf, param)
 	}
 
 }

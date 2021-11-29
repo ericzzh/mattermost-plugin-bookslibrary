@@ -61,7 +61,7 @@ func TestBorrowHandle(t *testing.T) {
 		assert.Contains(t, aBook.LibworkerUsers, br.LibworkerUser, "LibworkerUser")
 		assert.Contains(t, aBook.LibworkerNames, br.LibworkerName, "LibworkerName")
 		assert.Equal(t, aBook.KeeperUsers, br.KeeperUsers, "KeeperUsers")
-		assert.Equal(t, aBook.KeeperNames, br.KeeperNames, "KeeperNames")
+		assert.Equal(t, aBook.KeeperInfos, br.KeeperInfos, "KeeperNames")
 
 		assert.Equal(t, 0, br.StepIndex, "StepIndex")
 
@@ -118,7 +118,7 @@ func TestBorrowHandle(t *testing.T) {
 			worker       string
 			workerName   string
 			keeperUsers  []string
-			keeperNames  []string
+			keeperInfos  KeeperInfoMap
 			workflow     []Step
 			tags         []string
 		}{
@@ -130,7 +130,10 @@ func TestBorrowHandle(t *testing.T) {
 				worker:       realwk,
 				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
-				keeperNames:  []string{"kpname1", "kpname2"},
+				keeperInfos:  KeeperInfoMap{
+					"kpuser1": {"kpname1"},
+					"kpuser2": {"kpname2"},
+				},
 				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
 					TAG_PREFIX_BORROWER + borrowUser,
@@ -148,7 +151,7 @@ func TestBorrowHandle(t *testing.T) {
 				worker:       realwk,
 				workerName:   realwkName,
 				keeperUsers:  []string{},
-				keeperNames:  []string{},
+				keeperInfos:  KeeperInfoMap{},
 				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
 					TAG_PREFIX_BORROWER + borrowUser,
@@ -164,7 +167,10 @@ func TestBorrowHandle(t *testing.T) {
 				worker:       realwk,
 				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
-				keeperNames:  []string{"kpname1", "kpname2"},
+				keeperInfos:  KeeperInfoMap{
+					"kpuser1": {"kpname1"},
+					"kpuser2": {"kpname2"},
+				},
 				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
 					TAG_PREFIX_BORROWER + borrowUser,
@@ -182,7 +188,10 @@ func TestBorrowHandle(t *testing.T) {
 				worker:       realwk,
 				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
-				keeperNames:  []string{"kpname1", "kpname2"},
+				keeperInfos:  KeeperInfoMap{
+					"kpuser1": {"kpname1"},
+					"kpuser2": {"kpname2"},
+				},
 				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
 					TAG_PREFIX_LIBWORKER + realwk,
@@ -199,7 +208,10 @@ func TestBorrowHandle(t *testing.T) {
 				worker:       realwk,
 				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
-				keeperNames:  []string{"kpname1", "kpname2"},
+				keeperInfos:   KeeperInfoMap{
+					"kpuser1": {"kpname1"},
+					"kpuser2": {"kpname2"},
+				},
 				workflow:     plugin._createWFTemplate(0),
 				tags: []string{
 					TAG_PREFIX_LIBWORKER + realwk,
@@ -223,7 +235,7 @@ func TestBorrowHandle(t *testing.T) {
 				LibworkerUser: role.worker,
 				LibworkerName: role.workerName,
 				KeeperUsers:   role.keeperUsers,
-				KeeperNames:   role.keeperNames,
+				KeeperInfos:   role.keeperInfos,
 				Worflow:       role.workflow,
 				StepIndex:     0,
 				Tags:          role.tags,
@@ -452,27 +464,33 @@ func TestBorrowHandle(t *testing.T) {
 			workerNm      string
 			worker_botId  string
 			keepers       []string
-			keepersNm     []string
+			keepersNm     KeeperInfoMap
 			keepers_botId []string
 		}{
 			{
-				borrower:      "worker1",
-				borId_botId:   worker1Id_botId,
-				worker:        "worker1",
-				workerNm:      "wkname1",
-				worker_botId:  worker1Id_botId,
-				keepers:       []string{"kpuser1", "kpuser2"},
-				keepersNm:     []string{"kpname1", "kpname2"},
+				borrower:     "worker1",
+				borId_botId:  worker1Id_botId,
+				worker:       "worker1",
+				workerNm:     "wkname1",
+				worker_botId: worker1Id_botId,
+				keepers:      []string{"kpuser1", "kpuser2"},
+				keepersNm: KeeperInfoMap{
+					"kpuser1": {"kpname1"},
+					"kpuser2": {"kpname2"},
+				},
 				keepers_botId: []string{keeper1Id_botId, keeper2Id_botId},
 			},
 			{
-				borrower:      "kpuser1",
-				borId_botId:   keeper1Id_botId,
-				worker:        "worker1",
-				workerNm:      "wkname1",
-				worker_botId:  worker1Id_botId,
-				keepers:       []string{"kpuser1", "kpuser2"},
-				keepersNm:     []string{"kpname1", "kpname2"},
+				borrower:     "kpuser1",
+				borId_botId:  keeper1Id_botId,
+				worker:       "worker1",
+				workerNm:     "wkname1",
+				worker_botId: worker1Id_botId,
+				keepers:      []string{"kpuser1", "kpuser2"},
+				keepersNm: KeeperInfoMap{
+					"kpuser1": {"kpname1"},
+					"kpuser2": {"kpname2"},
+				},
 				keepers_botId: []string{keeper1Id_botId, keeper2Id_botId},
 			},
 			{
@@ -482,7 +500,9 @@ func TestBorrowHandle(t *testing.T) {
 				workerNm:      "wkname1",
 				worker_botId:  worker1Id_botId,
 				keepers:       []string{"kpuser2"},
-				keepersNm:     []string{"kpname2"},
+				keepersNm:     KeeperInfoMap{
+					"kpuser2": {"kpname2"},
+				},
 				keepers_botId: []string{keeper2Id_botId},
 			},
 			{
@@ -492,7 +512,10 @@ func TestBorrowHandle(t *testing.T) {
 				workerNm:      "kpname1",
 				worker_botId:  keeper1Id_botId,
 				keepers:       []string{"kpuser1", "kpuser2"},
-				keepersNm:     []string{"kpname1", "kpname2"},
+				keepersNm:     KeeperInfoMap{
+					"kpuser1": {"kpname1"},
+					"kpuser2": {"kpname2"},
+				},
 				keepers_botId: []string{keeper1Id_botId, keeper2Id_botId},
 			},
 			{
@@ -502,7 +525,9 @@ func TestBorrowHandle(t *testing.T) {
 				workerNm:      "wkname1",
 				worker_botId:  worker1Id_botId,
 				keepers:       []string{"worker1"},
-				keepersNm:     []string{"wkname1"},
+				keepersNm:     KeeperInfoMap{
+					"worker1": {"wkname1"},
+				},
 				keepers_botId: []string{worker1Id_botId},
 			},
 		} {
@@ -516,7 +541,7 @@ func TestBorrowHandle(t *testing.T) {
 			thisBook.LibworkerUsers = []string{test.worker}
 			thisBook.LibworkerNames = []string{test.workerNm}
 			thisBook.KeeperUsers = test.keepers
-			thisBook.KeeperNames = test.keepersNm
+			thisBook.KeeperInfos = test.keepersNm
 
 			borrowUser := test.borrower
 

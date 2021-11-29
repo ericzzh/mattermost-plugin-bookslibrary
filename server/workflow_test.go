@@ -362,9 +362,11 @@ func TestWorkflowHandle(t *testing.T) {
 							},
 						},
 						brq: BorrowRequest{
-							StepIndex:    _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
-							KeeperUsers:  []string{"kpuser1"},
-							KeeperNames:  []string{"kpname1"},
+							StepIndex:   _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							KeeperUsers: []string{"kpuser1"},
+							KeeperInfos: KeeperInfoMap{
+								"kpuser1": {"kpname1"},
+							},
 							ChosenCopyId: "zzh-book-001 b1",
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
@@ -397,9 +399,11 @@ func TestWorkflowHandle(t *testing.T) {
 						notifiy:             true,
 						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:    _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
-							KeeperUsers:  []string{"kpuser1"},
-							KeeperNames:  []string{"kpname1"},
+							StepIndex:   _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							KeeperUsers: []string{"kpuser1"},
+							KeeperInfos: KeeperInfoMap{
+								"kpuser1": {"kpname1"},
+							},
 							ChosenCopyId: "zzh-book-001 b1",
 							Tags: []string{
 								TAG_PREFIX_BORROWER + td.BorrowUser,
@@ -416,9 +420,11 @@ func TestWorkflowHandle(t *testing.T) {
 						notifiy:             true,
 						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 						brq: BorrowRequest{
-							StepIndex:    _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
-							KeeperUsers:  []string{"kpuser1"},
-							KeeperNames:  []string{"kpname1"},
+							StepIndex:   _getIndexByStatus(STATUS_KEEPER_CONFIRMED, wf),
+							KeeperUsers: []string{"kpuser1"},
+							KeeperInfos: KeeperInfoMap{
+								"kpuser1": {"kpname1"},
+							},
 							ChosenCopyId: "zzh-book-001 b1",
 							Tags: []string{
 								TAG_PREFIX_LIBWORKER + worker,
@@ -931,12 +937,12 @@ func TestWorkflowHandle(t *testing.T) {
 				if test.brq.KeeperUsers != nil {
 					assert.Equalf(t, test.brq.KeeperUsers, newBorrow.DataOrImage.KeeperUsers,
 						"in step: %v, role: %v", expStep, test.role)
-					assert.Equalf(t, test.brq.KeeperNames, newBorrow.DataOrImage.KeeperNames,
+					assert.Equalf(t, test.brq.KeeperInfos, newBorrow.DataOrImage.KeeperInfos,
 						"in step: %v, role: %v", expStep, test.role)
 					newBorrow.DataOrImage.KeeperUsers = nil
 					oldBorrow.DataOrImage.KeeperUsers = nil
-					newBorrow.DataOrImage.KeeperNames = nil
-					oldBorrow.DataOrImage.KeeperNames = nil
+					newBorrow.DataOrImage.KeeperInfos = nil
+					oldBorrow.DataOrImage.KeeperInfos = nil
 				}
 
 				if test.brq.ChosenCopyId != "" {
@@ -964,10 +970,10 @@ func TestWorkflowHandle(t *testing.T) {
 				oldBorrow.DataOrImage.RenewedTimes = 0
 				newBorrow.DataOrImage.RenewedTimes = 0
 
-                                //because the non-master part will be recontructed every time
-                                //the order is not granteened
-                                sort.Strings(oldBorrow.RelationKeys.Keepers)
-                                sort.Strings(newBorrow.RelationKeys.Keepers)
+				//because the non-master part will be recontructed every time
+				//the order is not granteened
+				sort.Strings(oldBorrow.RelationKeys.Keepers)
+				sort.Strings(newBorrow.RelationKeys.Keepers)
 				assert.Equalf(t, oldBorrow, newBorrow,
 					"in step: %v", expStep)
 
@@ -1249,7 +1255,9 @@ func TestWorkflowInvFlow(t *testing.T) {
 		}
 		env.td.ABookPri = &BookPrivate{
 			KeeperUsers: []string{"kpuser1"},
-			KeeperNames: []string{"kpname1"},
+			KeeperInfos: KeeperInfoMap{
+				"kpuser1": {"kpname1"},
+			},
 			CopyKeeperMap: map[string]Keeper{
 				"zzh-book-001 b1": {User: "kpuser1"},
 			},
@@ -1273,7 +1281,9 @@ func TestWorkflowInvFlow(t *testing.T) {
 		}
 		env.td.ABookPri = &BookPrivate{
 			KeeperUsers: []string{"kpuser1"},
-			KeeperNames: []string{"kpname1"},
+			KeeperInfos: KeeperInfoMap{
+				"kpuser1": {"kpname1"},
+			},
 			CopyKeeperMap: map[string]Keeper{
 				"zzh-book-001 b1": {User: "kpuser1"},
 			},
@@ -1317,7 +1327,9 @@ func TestWorkflowInvFlow(t *testing.T) {
 		}
 		env.td.ABookPri = &BookPrivate{
 			KeeperUsers: []string{"kpuser1"},
-			KeeperNames: []string{"kpname1"},
+			KeeperInfos: KeeperInfoMap{
+				"kpuser1": {"kpname1"},
+			},
 			CopyKeeperMap: map[string]Keeper{
 				"zzh-book-001 b1": {User: "kpuser1"},
 			},
@@ -1362,7 +1374,9 @@ func TestWorkflowInvFlow(t *testing.T) {
 		}
 		env.td.ABookPri = &BookPrivate{
 			KeeperUsers: []string{"kpuser1"},
-			KeeperNames: []string{"kpname1"},
+			KeeperInfos: KeeperInfoMap{
+				"kpuser1": {"kpname1"},
+			},
 			CopyKeeperMap: map[string]Keeper{
 				"zzh-book-001 b1": {User: "kpuser1"},
 			},
@@ -1584,6 +1598,12 @@ func TestWorkflowRevert(t *testing.T) {
 
 			//Renew times check
 			assert.Equalf(t, step.result.renewTimes, bor.DataOrImage.RenewedTimes, "renew times is not correct")
+
+
+                        //assert afterword clear
+                        _assertAfterwordStepsCleared(t, step.status, bor.DataOrImage.Worflow)
+
+                        
 		}
 
 	})
@@ -2525,19 +2545,26 @@ func TestMultiRoles(t *testing.T) {
 
 		getUpdatedBorrows(env, updatedBorrowCallback{
 			master: func(br *Borrow) {
-				assert.Containsf(t, br.RelationKeys.Keepers, env.createdPid[env.worker_botId], "should contains work post id")
+				assert.Containsf(t, br.RelationKeys.Keepers, env.createdPid[env.worker_botId], "should contain worker post id")
 			},
 		})
 
 		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
+
+                var chosenId string
+                if env.worker == env.td.ABook.LibworkerUsers[0]{
+                      chosenId = "zzh-book-001 b3"
+                }else{
+                      chosenId = "zzh-book-001 b1"
+                }
 		//the actor keeper won't be the worker, but the keeper(worker) shouldn't be deleted
-		performNext(t, env, STATUS_KEEPER_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1"})
+		performNext(t, env, STATUS_KEEPER_CONFIRMED, false, performNextOption{chosen: chosenId})
 		assert.Equalf(t, 0, len(env.realbrDelPosts[env.worker_botId]), "keeper should not be deleted.")
 
 		getUpdatedBorrows(env, updatedBorrowCallback{
 			master: func(br *Borrow) {
 				assert.Equalf(t, 1, len(br.RelationKeys.Keepers), "keeper relation should be deleted")
-				assert.NotContainsf(t, br.RelationKeys.Keepers, env.createdPid[env.worker_botId], "should not contains work post id")
+				assert.NotContainsf(t, br.RelationKeys.Keepers, env.createdPid[env.worker_botId], "should not contain worker post id")
 			},
 		})
 
@@ -2550,10 +2577,17 @@ func TestMultiRoles(t *testing.T) {
 				keepersAsLibworkers: true,
 			},
 		})
-
+              
 		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
+
+                var chosenId string
+                if env.worker == env.td.ABook.LibworkerUsers[0]{
+                      chosenId = "zzh-book-001 b3"
+                }else{
+                      chosenId = "zzh-book-001 b1"
+                }
 		//the actor keeper won't be the worker, but the keeper(worker) shouldn't be deleted
-		performNext(t, env, STATUS_KEEPER_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1"})
+		performNext(t, env, STATUS_KEEPER_CONFIRMED, false, performNextOption{chosen: chosenId})
 
 		getUpdatedBorrows(env, updatedBorrowCallback{
 			master: func(br *Borrow) {
@@ -2561,7 +2595,7 @@ func TestMultiRoles(t *testing.T) {
 			},
 		})
 		env.realbrPosts[env.worker_botId] = nil
-		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{chosen: "zzh-book-001 b1", backward: true})
+		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{chosen: chosenId, backward: true})
 
 		assert.Emptyf(t, env.realbrPosts[env.worker_botId], "should not create keeper")
 
