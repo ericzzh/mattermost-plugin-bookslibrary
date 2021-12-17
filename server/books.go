@@ -83,6 +83,26 @@ func (p *Plugin) GetABook(id string) (*bookInfo, error) {
 	}, nil
 }
 
+func (p *Plugin) _getFetchInvKeepers(username string) (string, error) {
+	user, appErr := p.API.GetUserByUsername(username)
+	if appErr != nil {
+		return "", appErr
+	}
+	_, appErr = p.API.GetChannelMember(p.borrowChannel.Id, user.Id)
+	if appErr != nil {
+		//not a supervisor
+		if appErr.Id == "app.channel.get_member.missing.app_error" {
+			return username, nil
+		}
+
+		return "", appErr
+	}
+
+	//supervisor, select from borrow channel
+	return "@", nil
+
+}
+
 func (p *Plugin) handleBooksRequest(c *plugin.Context, w http.ResponseWriter, r *http.Request) {
 
 	var booksRequest *BooksRequest
@@ -106,8 +126,14 @@ func (p *Plugin) handleBooksRequest(c *plugin.Context, w http.ResponseWriter, r 
 		messages, err := p._uploadBooks(booksRequest.Body)
 		if err != nil {
 			p.API.LogError("upload books error.", "err", fmt.Sprintf("%+v", err))
+			var errorMessage string
+			if errors.Is(err, ErrLocked) || errors.Is(err, ErrStale) {
+				errorMessage = p.i18n.GetText("system-busy")
+			} else {
+				errorMessage = p.i18n.GetText("upload-book-failed")
+			}
 			resp, _ := json.Marshal(Result{
-				Error:    "upload books error.",
+				Error:    errorMessage,
 				Messages: messages,
 			})
 
@@ -123,10 +149,20 @@ func (p *Plugin) handleBooksRequest(c *plugin.Context, w http.ResponseWriter, r 
 		w.Write(resp)
 	case BOOKS_ACTION_FETCH_INV_KEEPER:
 
+		keeperUser, appErr := p._getFetchInvKeepers(booksRequest.ActUser)
+		if appErr != nil {
+			p.API.LogError("_getFetchInvKeepers error.", "err", fmt.Sprintf("%+v", appErr))
+			resp, _ := json.Marshal(Result{
+				Error: "_getFetchInvKeepers error.",
+			})
+
+			w.Write(resp)
+			return
+		}
 		messages, err := p._fetchBooks(booksRequest.Body,
 			fetchOptions{
 				fetchPub:   true,
-				keeperUser: booksRequest.ActUser,
+				keeperUser: keeperUser,
 			})
 		if err != nil {
 			p.API.LogError("fetch books error.", "err", fmt.Sprintf("%+v", err))
@@ -173,7 +209,7 @@ func (p *Plugin) _uploadBooks(booksJson string) (Messages, error) {
 	for _, book := range books {
 		bookmsg, err := p._uploadABook(book)
 		if err != nil {
-			retErr = errors.New("some error was occurred in books.")
+			retErr = errors.Wrapf(err, "some error was occurred in books.")
 		}
 		mj, _ := json.Marshal(bookmsg)
 		messages[book.BookPublic.Id] = string(mj)
@@ -251,6 +287,8 @@ func (p *Plugin) _updateBookParts(opts updateOptions) error {
 	updates := []*model.Post{}
 
 	if opts.pub != nil {
+                //set timestamp
+                opts.pub.MatchId = model.NewId()
 		if err := p._updateBookPart(opts.pubPost, opts.pub); err != nil {
 			if err := p._rollbackToOld(updates); err != nil {
 				return errors.Wrapf(err, "Fatal Error, rollback error by pub updates.")
@@ -307,7 +345,7 @@ func (p *Plugin) _updateABook(book *Book) error {
 
 	//lock pub part only
 	if _, ok := lockmap.LoadOrStore(pubId, struct{}{}); ok {
-		return errors.New(fmt.Sprintf("lock error."))
+		return errors.Wrapf(ErrLocked, "lock error")
 	}
 
 	defer lockmap.Delete(pubId)
@@ -329,6 +367,11 @@ func (p *Plugin) _updateABook(book *Book) error {
 	if err != nil {
 		return errors.Wrapf(err, "get pub error.")
 	}
+        
+	if book.Upload.Etag != "" &&  bookPubOld.MatchId != book.Upload.Etag {
+		return errors.Wrapf(ErrStale, "update stale")
+	}
+
 	//IsAllowedToBorrow is not updated when updating
 	if !book.Upload.UpdIsAllowedToBorrow {
 		bookPub.IsAllowedToBorrow = bookPubOld.IsAllowedToBorrow
@@ -793,28 +836,38 @@ func (p *Plugin) _fetchABook(book *Book, opt fetchOptions) (id string, bm *Books
 	copies := BookCopies{}
 
 	if opt.keeperUser != "" {
-		for copyid, keeper := range savePri.CopyKeeperMap {
-			if keeper.User == opt.keeperUser {
-				copyKeeperMap[copyid] = keeper
-				copies[copyid] = saveInv.Copies[copyid]
+		if opt.keeperUser == "@" {
+			info.book.BookPrivate = savePri
+			info.book.BookInventory = saveInv
+		} else {
+			for copyid, keeper := range savePri.CopyKeeperMap {
+				if keeper.User == opt.keeperUser {
+					copyKeeperMap[copyid] = keeper
+					copies[copyid] = saveInv.Copies[copyid]
+				}
+
 			}
+
+			if info.book.BookPrivate == nil {
+				info.book.BookPrivate = &BookPrivate{}
+			}
+
+			if len(copyKeeperMap) == 0 {
+				info.book.BookPrivate.KeeperInfos = KeeperInfoMap{}
+			} else {
+				info.book.BookPrivate.KeeperInfos = KeeperInfoMap{
+					opt.keeperUser: savePri.KeeperInfos[opt.keeperUser],
+				}
+			}
+
+			info.book.BookPrivate.CopyKeeperMap = copyKeeperMap
+
+			if info.book.BookInventory == nil {
+				info.book.BookInventory = &BookInventory{}
+			}
+
+			info.book.BookInventory.Copies = copies
 		}
-
-		if info.book.BookPrivate == nil {
-			info.book.BookPrivate = &BookPrivate{}
-		}
-
-                info.book.BookPrivate.KeeperInfos = KeeperInfoMap{
-                     opt.keeperUser:savePri.KeeperInfos[opt.keeperUser], 
-                }
-
-		info.book.BookPrivate.CopyKeeperMap = copyKeeperMap
-
-		if info.book.BookInventory == nil {
-			info.book.BookInventory = &BookInventory{}
-		}
-
-		info.book.BookInventory.Copies = copies
 
 	}
 

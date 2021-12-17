@@ -146,7 +146,7 @@ type SelectCopyIdDialogProps = {
 
 function SelectCopyIdDialog(props: SelectCopyIdDialogProps) {
     const { open, setCopyId, onClose, inStockCopies } = props;
-    const [selected, setSelected] = React.useState(inStockCopies[0].copyid);
+    const [selected, setSelected] = React.useState(inStockCopies[0]?.copyid);
     const handleChange = (event: React.ChangeEvent<{ value: unknown }>) => {
         setSelected(String(event.target.value) || "");
     };
@@ -477,6 +477,7 @@ function BorrowType(props: any) {
                     : borrow.relations_keys.master,
             act_user: currentUser.username,
             delete: true,
+            etag: borrow.dataOrImage.match_id,
         };
         try {
             setLoading(true);
@@ -968,6 +969,7 @@ function BorrowType(props: any) {
             next_step_index: nextStepIndex,
             backward: backward,
             chosen_copy_id: chosenCopyId,
+            etag: borrow.dataOrImage.match_id,
         };
 
         try {

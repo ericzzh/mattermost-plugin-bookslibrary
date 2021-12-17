@@ -28,6 +28,18 @@ var TEXTJSON = `
       },
       "choose-in-stock":{
         "zh":"没有选择书册编号"
+      },
+      "system-busy":{
+        "zh":"系统正忙，请刷新页面后再试"
+      },
+      "upload-book-failed":{
+        "zh":"更新图书数据失败"
+      },
+      "failed-to-get-book":{
+        "zh":"取得图书数据失败"
+      },
+      "failed-to-get-borrow":{
+        "zh":"取得借书请求数据失败"
       }
     }
 `

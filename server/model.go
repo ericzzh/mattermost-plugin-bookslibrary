@@ -54,6 +54,7 @@ type BookPublic struct {
 	ManuallyDisallowed bool      `json:"manually_disallowed"`
 	Tags               []string  `json:"tags,omitempty"`
 	Relations          Relations `json:"relations_pub,omitempty"`
+	MatchId            string    `json:"match_id"`
 }
 
 type Keeper struct {
@@ -103,6 +104,7 @@ type Upload struct {
 	Post_id              string `json:"post_id"`
 	Delete               bool   `json:"delete"`
 	UpdIsAllowedToBorrow bool   `json:"upd_isAllowedToBorrow"`
+	Etag                 string `json:"etag"`
 }
 
 const (
@@ -153,6 +155,7 @@ type WorkflowRequest struct {
 	Delete        bool   `json:"delete"`
 	Backward      bool   `json:"backward"`
 	ChosenCopyId  string `json:"chosen_copy_id"`
+	Etag          string `json:"etag"`
 }
 
 //The key role is library worker(libworker). it is the cross-point in the workflow
@@ -192,6 +195,7 @@ type BorrowRequest struct {
 	StepIndex     int           `json:"step_index"`
 	RenewedTimes  int           `json:"renewed_times"`
 	Tags          []string      `json:"tags"`
+	MatchId       string        `json:"match_id"`
 }
 
 type Borrow struct {
@@ -240,4 +244,5 @@ var (
 	ErrNoStock           = errors.New("no-stock")
 	ErrRenewLimited      = errors.New("renew-limited")
 	ErrChooseInStockCopy = errors.New("choose-in-stock")
+	ErrStale             = errors.New("stale-update")
 )

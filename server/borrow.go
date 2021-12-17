@@ -40,8 +40,14 @@ func (p *Plugin) handleBorrowRequest(c *plugin.Context, w http.ResponseWriter, r
 	if err != nil {
 		defer lockmap.Delete(borrowRequestKey.BookPostId)
 		p.API.LogError("Failed to lock or get a book.", "err", fmt.Sprintf("%+v", err))
+		var errorMessage string
+		if errors.Is(err, ErrLocked) || errors.Is(err, ErrStale) {
+			errorMessage = p.i18n.GetText("system-busy")
+		} else {
+			errorMessage = p.i18n.GetText("failed-to-get-book")
+		}
 		resp, _ := json.Marshal(Result{
-			Error: "Failed to lock or get a book.",
+			Error: errorMessage,
 		})
 
 		w.Write(resp)
@@ -333,12 +339,13 @@ func (p *Plugin) _makeBorrowRequest(bqk *BorrowRequestKey, borrowerUser string, 
 		bq.BookId = book.BookPublic.Id
 		bq.BookName = book.BookPublic.Name
 		bq.Author = book.Author
+                bq.MatchId = model.NewId()
 	} else {
-
 		bq.BookPostId = masterBr.BookPostId
 		bq.BookId = masterBr.BookId
 		bq.BookName = masterBr.BookName
 		bq.Author = masterBr.Author
+                bq.MatchId = masterBr.MatchId
 	}
 
 	bq.Tags = []string{}
@@ -580,13 +587,13 @@ func (p *Plugin) _checkConditions(brk *BorrowRequestKey, bookInfo *bookInfo) err
 		if book.BookPublic.IsAllowedToBorrow {
 			book.BookPublic.IsAllowedToBorrow = false
 			book.BookPublic.ReasonOfDisallowed = p.i18n.GetText("no-stock")
-		}
 
-		if err := p._updateBookParts(updateOptions{
-			pub:     book.BookPublic,
-			pubPost: bookInfo.pubPost,
-		}); err != nil {
-			return errors.New("update pub error.")
+			if err := p._updateBookParts(updateOptions{
+				pub:     book.BookPublic,
+				pubPost: bookInfo.pubPost,
+			}); err != nil {
+				return errors.New("update pub error.")
+			}
 		}
 
 		return ErrNoStock
@@ -640,11 +647,12 @@ func (p *Plugin) _checkConditions(brk *BorrowRequestKey, bookInfo *bookInfo) err
 	return nil
 }
 
+
 func (p *Plugin) _lockAndGetABook(id string) (*bookInfo, error) {
 
 	//lock pub part only
 	if _, ok := lockmap.LoadOrStore(id, struct{}{}); ok {
-		return nil, errors.New(fmt.Sprintf("lock error."))
+		return nil, errors.Wrapf(ErrLocked , "Failed to get book post id %s.", id)
 	}
 
 	var (

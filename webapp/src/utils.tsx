@@ -16,3 +16,7 @@ export function ExistedInArray<T>(keys: Array<T>, values: Array<T>) {
 
     return false
 }
+
+export function GenEtag() {
+   return Date.now() * 1000000 
+}

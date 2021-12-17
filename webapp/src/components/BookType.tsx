@@ -580,7 +580,11 @@ function BookType(props: any) {
     });
 
     const ReasonOfDisallowed = book.reason_of_disallowed && (
-        <StyledReasonOfDisallowed container justifyContent={"flex-end"} alignItems={"flex-end"}>
+        <StyledReasonOfDisallowed
+            container
+            justifyContent={"flex-end"}
+            alignItems={"flex-end"}
+        >
             <Grid item>{book.reason_of_disallowed}</Grid>
         </StyledReasonOfDisallowed>
     );

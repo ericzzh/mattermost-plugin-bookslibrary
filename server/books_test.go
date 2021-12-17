@@ -192,7 +192,10 @@ func TestBooks(t *testing.T) {
 
 	// fmt.Println(string(reqJson))
 
+	resetLastUpdated := ""
+
 	resetSomeBooksInDB := func() Books {
+		resetLastUpdated = model.NewId() 
 		return Books{
 			{
 				&BookPublic{
@@ -222,6 +225,7 @@ func TestBooks(t *testing.T) {
 						REL_BOOK_PRIVATE:   booksPids[0]["pri_id"],
 						REL_BOOK_INVENTORY: booksPids[0]["inv_id"],
 					},
+					MatchId: resetLastUpdated,
 				},
 				&BookPrivate{
 					Id:          "zzh-book-001",
@@ -294,6 +298,7 @@ func TestBooks(t *testing.T) {
 						REL_BOOK_PRIVATE:   booksPids[1]["pri_id"],
 						REL_BOOK_INVENTORY: booksPids[1]["inv_id"],
 					},
+					MatchId: resetLastUpdated,
 				},
 				&BookPrivate{
 					Id:          "zzh-book-002",
@@ -573,6 +578,14 @@ func TestBooks(t *testing.T) {
 		)
 	}
 
+	assertPublic := func(t *testing.T, expPub BookPublic, actPub BookPublic, last string) {
+		assert.NotEmpty(t, actPub.MatchId)
+		actPub.MatchId = ""
+		expPub.MatchId = ""
+		assert.Equalf(t, expPub, actPub, "public part")
+
+	}
+
 	t.Run("create_normal", func(t *testing.T) {
 
 		w := httptest.NewRecorder()
@@ -606,7 +619,7 @@ func TestBooks(t *testing.T) {
 					assert.Equal(t, "custom_book_type", postType, "post.type should be BookType")
 					bookpub := new(BookPublic)
 					json.Unmarshal([]byte(msg), bookpub)
-					assert.Equalf(t, somebook.BookPublic, bookpub, "public part")
+					assertPublic(t, *somebook.BookPublic, *bookpub, resetLastUpdated)
 				case "pri_id":
 					assert.Equal(t, "custom_book_private_type", postType, "post.type should be BookPrivateType")
 					bookpri := new(BookPrivate)
@@ -867,6 +880,9 @@ func TestBooks(t *testing.T) {
 				},
 			},
 		} {
+			resetMockChannels(mockChannels)
+			someBooksInDB = resetSomeBooksInDB()
+
 			theseBooksUpl[0].Upload = &Upload{
 				Post_id: test.postids[0],
 			}
@@ -889,8 +905,6 @@ func TestBooks(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("POST", "/books", bytes.NewReader(reqJson))
 
-			resetMockChannels(mockChannels)
-			someBooksInDB = resetSomeBooksInDB()
 			someBooksInDB[0].BookPublic.IsAllowedToBorrow = false
 			someBooksInDB[1].BookPublic.IsAllowedToBorrow = true
 
@@ -933,7 +947,7 @@ func TestBooks(t *testing.T) {
 					case "pub_id":
 						var bookpub *BookPublic
 						json.Unmarshal([]byte(msg), &bookpub)
-						assert.Equalf(t, thisbook.BookPublic, bookpub, "public part %v", i)
+						assertPublic(t, *thisbook.BookPublic, *bookpub, resetLastUpdated)
 					case "pri_id":
 						var bookpri *BookPrivate
 						json.Unmarshal([]byte(msg), &bookpri)
@@ -1020,7 +1034,7 @@ func TestBooks(t *testing.T) {
 				case "pub_id":
 					var bookpub *BookPublic
 					json.Unmarshal([]byte(msg), &bookpub)
-					assert.Equalf(t, thisbook.BookPublic, bookpub, "public part")
+					assertPublic(t, *thisbook.BookPublic, *bookpub, resetLastUpdated)
 					continue NEXTBOOK
 				default:
 				}
@@ -1029,6 +1043,10 @@ func TestBooks(t *testing.T) {
 	})
 
 	t.Run("update_pub_only", func(t *testing.T) {
+		resetMockChannels(mockChannels)
+		someBooksInDB = resetSomeBooksInDB()
+		errctrls = initErrControl()
+
 		var thisBookUpl Book
 		//there is map in, so have to use deepcopy
 		DeepCopy(&thisBookUpl, &someBooksUpl[0])
@@ -1056,10 +1074,6 @@ func TestBooks(t *testing.T) {
 
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/books", bytes.NewReader(reqJson))
-
-		resetMockChannels(mockChannels)
-		someBooksInDB = resetSomeBooksInDB()
-		errctrls = initErrControl()
 
 		plugin.ServeHTTP(nil, w, r)
 
@@ -1151,6 +1165,64 @@ func TestBooks(t *testing.T) {
 
 	})
 
+	t.Run("update_stale", func(t *testing.T) {
+
+		var thisBookUpl Book
+		//there is map in, so have to use deepcopy
+		DeepCopy(&thisBookUpl, &someBooksUpl[0])
+
+		thisBookUpl.BookPublic.Author = "New Author"
+
+		thisBookUpl.BookPrivate = nil
+		thisBookUpl.BookInventory = nil
+		thisBookUpl.Upload = &Upload{
+			Post_id: booksPids[0]["pub_id"],
+			Etag:    "123456",
+		}
+
+		var theseBooksUpl Books
+		theseBooksUpl = append(theseBooksUpl, thisBookUpl)
+
+		booksJson, _ := json.Marshal(theseBooksUpl)
+
+		// 		req := BooksRequest{
+		// 			Action:  BOOKS_ACTION_UPLOAD,
+		// 			ActUser: td.ABook.LibworkerNames[0],
+		// 			Body:    string(booksJson),
+		// 		}
+		//
+		// 		reqJson, _ := json.Marshal(req)
+		//
+		// 		w := httptest.NewRecorder()
+		// 		r := httptest.NewRequest("POST", "/books", bytes.NewReader(reqJson))
+		//
+		// 		resetMockChannels(mockChannels)
+		// 		someBooksInDB = resetSomeBooksInDB()
+		// 		errctrls = initErrControl()
+		//
+		// 		plugin.ServeHTTP(nil, w, r)
+		//
+		// 		_checkBookMessageResult(t, w, true, map[string]BooksMessage{
+		// 			"zzh-book-001": {
+		// 				PostId:  booksPids[0]["pub_id"],
+		// 				Status:  BOOK_UPLOAD_ERROR,
+		// 				Message: plugin.i18n.GetText("system-locking"),
+		// 			},
+		// 		})
+
+		sendARequestAndCheck(t, BooksRequest{
+			Action:  BOOKS_ACTION_UPLOAD,
+			ActUser: td.ABook.LibworkerUsers[0],
+			Body:    string(booksJson),
+		}, true, map[string]BooksMessage{
+			"zzh-book-001": {
+				PostId:  booksPids[0]["pub_id"],
+				Status:  BOOK_UPLOAD_ERROR,
+				Message: plugin.i18n.GetText("system-locking"),
+			},
+		})
+	})
+
 	t.Run("update_rollback", func(t *testing.T) {
 
 		var theseBooksUpl Books
@@ -1207,6 +1279,10 @@ func TestBooks(t *testing.T) {
 				},
 			},
 		} {
+			//check result
+			// mockChannels = initMockChannel()
+			resetMockChannels(mockChannels)
+			someBooksInDB = resetSomeBooksInDB()
 
 			booksJson, _ := json.Marshal(theseBooksUpl)
 
@@ -1220,11 +1296,6 @@ func TestBooks(t *testing.T) {
 
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("POST", "/books", bytes.NewReader(reqJson))
-
-			//check result
-			// mockChannels = initMockChannel()
-			resetMockChannels(mockChannels)
-			someBooksInDB = resetSomeBooksInDB()
 
 			errctrls = []errControls{test.erc}
 			plugin.ServeHTTP(nil, w, r)
@@ -1345,8 +1416,10 @@ func TestBooks(t *testing.T) {
 
 		plugin.ServeHTTP(nil, w, r)
 
-		assert.Equalf(t, expectBooks[0].BookPublic, someBooksInDB[0].BookPublic, "public part")
-		assert.Equalf(t, expectBooks[1].BookPublic, someBooksInDB[1].BookPublic, "public part")
+		assertPublic(t, *expectBooks[0].BookPublic, *someBooksInDB[0].BookPublic, resetLastUpdated)
+		// assert.Equalf(t, expectBooks[0].BookPublic, someBooksInDB[0].BookPublic, "public part")
+		// assert.Equalf(t, expectBooks[1].BookPublic, someBooksInDB[1].BookPublic, "public part")
+		assertPublic(t, *expectBooks[1].BookPublic, *someBooksInDB[1].BookPublic, resetLastUpdated)
 		assert.Equalf(t, expectBooks[0].BookInventory, someBooksInDB[0].BookInventory, "inventory part")
 		assert.Equalf(t, expectBooks[1].BookInventory, someBooksInDB[1].BookInventory, "inventory part")
 
@@ -1666,4 +1739,73 @@ func TestBooks(t *testing.T) {
 		})
 	})
 
+	t.Run("fetch inv by supervisor", func(t *testing.T) {
+		someBooksInDB = resetSomeBooksInDB()
+		resetMockChannels(mockChannels)
+		errctrls = initErrControl()
+
+		key := fmt.Sprintf(`[
+                  {
+                    "post_id": "%v"
+                  }
+                ]`, booksPids[0]["pub_id"])
+
+		var b1 Book
+		DeepCopy(&b1, someBooksInDB[0])
+
+		result, _ := json.Marshal(b1)
+
+		sendARequestAndCheck(t, BooksRequest{
+			Action:  BOOKS_ACTION_FETCH_INV_KEEPER,
+			ActUser: td.ABook.LibworkerUsers[0],
+			Body:    key,
+		}, false, map[string]BooksMessage{
+			"zzh-book-001": {
+				booksPids[0]["pub_id"],
+				BOOK_ACTION_SUCC,
+				string(result),
+			},
+		})
+	})
+
+	t.Run("fetch inv not by supervisor", func(t *testing.T) {
+		someBooksInDB = resetSomeBooksInDB()
+		resetMockChannels(mockChannels)
+		errctrls = initErrControl()
+
+		key := fmt.Sprintf(`[
+                  {
+                    "post_id": "%v"
+                  }
+                ]`, booksPids[0]["pub_id"])
+
+		var b1 Book
+		DeepCopy(&b1, someBooksInDB[0])
+
+		copyKeeperMap := map[string]Keeper{}
+		bookCopies := BookCopies{}
+
+		b1.BookPrivate = &BookPrivate{
+			KeeperInfos:   KeeperInfoMap{},
+			CopyKeeperMap: copyKeeperMap,
+		}
+
+		b1.BookInventory = &BookInventory{
+			Copies: bookCopies,
+		}
+
+		result, _ := json.Marshal(b1)
+
+		sendARequestAndCheck(t, BooksRequest{
+			Action:  BOOKS_ACTION_FETCH_INV_KEEPER,
+			ActUser: td.ABook.LibworkerUsers[1],
+			Body:    key,
+		}, false, map[string]BooksMessage{
+			"zzh-book-001": {
+				booksPids[0]["pub_id"],
+				BOOK_ACTION_SUCC,
+				string(result),
+			},
+		})
+	})
 }

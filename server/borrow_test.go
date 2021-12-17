@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"sort"
 	"testing"
+
 	// "time"
 
 	"github.com/mattermost/mattermost-server/v5/model"
@@ -80,6 +81,8 @@ func TestBorrowHandle(t *testing.T) {
 			TAG_PREFIX_STATUS + STATUS_REQUESTED,
 		}, br.Tags, "Tags")
 
+		assert.NotEmpty(t, br.MatchId)
+
 	})
 
 	t.Run("serveHttp_borrow", func(t *testing.T) {
@@ -130,11 +133,11 @@ func TestBorrowHandle(t *testing.T) {
 				worker:       realwk,
 				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
-				keeperInfos:  KeeperInfoMap{
+				keeperInfos: KeeperInfoMap{
 					"kpuser1": {"kpname1"},
 					"kpuser2": {"kpname2"},
 				},
-				workflow:     plugin._createWFTemplate(0),
+				workflow: plugin._createWFTemplate(0),
 				tags: []string{
 					TAG_PREFIX_BORROWER + borrowUser,
 					TAG_PREFIX_LIBWORKER + realwk,
@@ -167,11 +170,11 @@ func TestBorrowHandle(t *testing.T) {
 				worker:       realwk,
 				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
-				keeperInfos:  KeeperInfoMap{
+				keeperInfos: KeeperInfoMap{
 					"kpuser1": {"kpname1"},
 					"kpuser2": {"kpname2"},
 				},
-				workflow:     plugin._createWFTemplate(0),
+				workflow: plugin._createWFTemplate(0),
 				tags: []string{
 					TAG_PREFIX_BORROWER + borrowUser,
 					TAG_PREFIX_LIBWORKER + realwk,
@@ -188,11 +191,11 @@ func TestBorrowHandle(t *testing.T) {
 				worker:       realwk,
 				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
-				keeperInfos:  KeeperInfoMap{
+				keeperInfos: KeeperInfoMap{
 					"kpuser1": {"kpname1"},
 					"kpuser2": {"kpname2"},
 				},
-				workflow:     plugin._createWFTemplate(0),
+				workflow: plugin._createWFTemplate(0),
 				tags: []string{
 					TAG_PREFIX_LIBWORKER + realwk,
 					TAG_PREFIX_KEEPER + "kpuser1",
@@ -208,11 +211,11 @@ func TestBorrowHandle(t *testing.T) {
 				worker:       realwk,
 				workerName:   realwkName,
 				keeperUsers:  []string{"kpuser1", "kpuser2"},
-				keeperInfos:   KeeperInfoMap{
+				keeperInfos: KeeperInfoMap{
 					"kpuser1": {"kpname1"},
 					"kpuser2": {"kpname2"},
 				},
-				workflow:     plugin._createWFTemplate(0),
+				workflow: plugin._createWFTemplate(0),
 				tags: []string{
 					TAG_PREFIX_LIBWORKER + realwk,
 					TAG_PREFIX_KEEPER + "kpuser1",
@@ -275,6 +278,12 @@ func TestBorrowHandle(t *testing.T) {
 			} else {
 				borrowExp.RelationKeys.Master = createdPid[plugin.borrowChannel.Id]
 			}
+
+			var updatedBr Borrow
+			json.Unmarshal([]byte(realbrUpdPosts[role.channelId].Message), &updatedBr)
+			assert.NotEmpty(t, updatedBr.DataOrImage.MatchId)
+
+			borrowExp.DataOrImage.MatchId = updatedBr.DataOrImage.MatchId
 
 			borrowExpJson, _ = json.MarshalIndent(borrowExp, "", "  ")
 			expPost = &model.Post{
@@ -494,38 +503,38 @@ func TestBorrowHandle(t *testing.T) {
 				keepers_botId: []string{keeper1Id_botId, keeper2Id_botId},
 			},
 			{
-				borrower:      "kpuser2",
-				borId_botId:   keeper2Id_botId,
-				worker:        "worker1",
-				workerNm:      "wkname1",
-				worker_botId:  worker1Id_botId,
-				keepers:       []string{"kpuser2"},
-				keepersNm:     KeeperInfoMap{
+				borrower:     "kpuser2",
+				borId_botId:  keeper2Id_botId,
+				worker:       "worker1",
+				workerNm:     "wkname1",
+				worker_botId: worker1Id_botId,
+				keepers:      []string{"kpuser2"},
+				keepersNm: KeeperInfoMap{
 					"kpuser2": {"kpname2"},
 				},
 				keepers_botId: []string{keeper2Id_botId},
 			},
 			{
-				borrower:      "bor",
-				borId_botId:   borId_botId,
-				worker:        "kpuser1",
-				workerNm:      "kpname1",
-				worker_botId:  keeper1Id_botId,
-				keepers:       []string{"kpuser1", "kpuser2"},
-				keepersNm:     KeeperInfoMap{
+				borrower:     "bor",
+				borId_botId:  borId_botId,
+				worker:       "kpuser1",
+				workerNm:     "kpname1",
+				worker_botId: keeper1Id_botId,
+				keepers:      []string{"kpuser1", "kpuser2"},
+				keepersNm: KeeperInfoMap{
 					"kpuser1": {"kpname1"},
 					"kpuser2": {"kpname2"},
 				},
 				keepers_botId: []string{keeper1Id_botId, keeper2Id_botId},
 			},
 			{
-				borrower:      "worker1",
-				borId_botId:   worker1Id_botId,
-				worker:        "worker1",
-				workerNm:      "wkname1",
-				worker_botId:  worker1Id_botId,
-				keepers:       []string{"worker1"},
-				keepersNm:     KeeperInfoMap{
+				borrower:     "worker1",
+				borId_botId:  worker1Id_botId,
+				worker:       "worker1",
+				workerNm:     "wkname1",
+				worker_botId: worker1Id_botId,
+				keepers:      []string{"worker1"},
+				keepersNm: KeeperInfoMap{
 					"worker1": {"wkname1"},
 				},
 				keepers_botId: []string{worker1Id_botId},

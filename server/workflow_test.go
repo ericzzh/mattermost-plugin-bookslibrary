@@ -255,6 +255,8 @@ func TestWorkflowHandle(t *testing.T) {
 		masterBrq := master.DataOrImage
 		wf := plugin._createWFTemplate(masterBrq.Worflow[masterBrq.StepIndex].ActionDate)
 
+		lastLastUpdate := masterBrq.MatchId
+
 		testWorkflow := []testData{
 			{
 				WorkflowRequest{
@@ -437,7 +439,7 @@ func TestWorkflowHandle(t *testing.T) {
 					{
 						role:                KEEPER,
 						chid:                td.Keeper2Id_botId,
-						notifiy:             true,
+						notifiy:             false,
 						LastActualStepIndex: _getIndexByStatus(STATUS_CONFIRMED, wf),
 						delete:              true,
 						brq:                 BorrowRequest{},
@@ -879,6 +881,7 @@ func TestWorkflowHandle(t *testing.T) {
 			var oldPosts map[string]*model.Post
 			DeepCopy(&oldPosts, &realbrUpdPosts)
 
+			step.wfr.Etag = lastLastUpdate
 			wfrJson, _ := json.Marshal(step.wfr)
 
 			w := httptest.NewRecorder()
@@ -888,7 +891,7 @@ func TestWorkflowHandle(t *testing.T) {
 
 			res := new(Result)
 			json.NewDecoder(w.Result().Body).Decode(&res)
-			require.Emptyf(t, res.Error, "response should not has error. err:%v", res.Error)
+			require.Emptyf(t, res.Error, "response should not has error. err:%v,step:%v ", res.Error, step.wfr)
 
 			// Unnecessary to get again, because map is passed by reference-like,
 			// but this work makes it easy to understand
@@ -902,10 +905,15 @@ func TestWorkflowHandle(t *testing.T) {
 				master.DataOrImage.Worflow[master.DataOrImage.StepIndex].ActionDate
 			wf[step.wfr.NextStepIndex].Completed = true
 
+			lastLastUpdate = master.DataOrImage.MatchId
+
 			for _, test := range step.result {
 
 				if test.delete {
 					assert.Equalf(t, createdPid[test.chid], env.realbrDelPosts[test.chid], "this post should be deleted, role:%v", test.role)
+					_, ok := env.realNotifyThreads[test.chid]
+					assert.Equalf(t, false, ok,
+						"should not notify, in step: %v, role: %v", &wf[test.brq.StepIndex], test.role)
 					continue
 				}
 
@@ -974,6 +982,11 @@ func TestWorkflowHandle(t *testing.T) {
 				//the order is not granteened
 				sort.Strings(oldBorrow.RelationKeys.Keepers)
 				sort.Strings(newBorrow.RelationKeys.Keepers)
+
+				assert.NotEqual(t, newBorrow.DataOrImage.MatchId, oldBorrow.DataOrImage.MatchId)
+				oldBorrow.DataOrImage.MatchId = ""
+				newBorrow.DataOrImage.MatchId = ""
+
 				assert.Equalf(t, oldBorrow, newBorrow,
 					"in step: %v", expStep)
 
@@ -1026,6 +1039,7 @@ type performNextOption struct {
 	chosen       string
 	backward     bool
 	errorMessage string
+	etag         string
 }
 
 func performNext(t *testing.T, env *workflowEnv, status string, assertError bool, opt performNextOption) {
@@ -1034,12 +1048,26 @@ func performNext(t *testing.T, env *workflowEnv, status string, assertError bool
 	if status == STATUS_KEEPER_CONFIRMED {
 		chosen = opt.chosen
 	}
+
+	var etag string
+
+	if opt.etag != "" {
+		etag = opt.etag
+	} else {
+		getUpdatedBorrows(env, updatedBorrowCallback{
+			master: func(br *Borrow) {
+				etag = br.DataOrImage.MatchId
+			},
+		})
+	}
+
 	req := WorkflowRequest{
 		MasterPostKey: env.createdPid[env.td.BorChannelId],
 		ActorUser:     getActor(env, status),
 		NextStepIndex: _getIndexByStatus(status, env.td.EmptyWorkflow),
 		ChosenCopyId:  chosen,
 		Backward:      opt.backward,
+		Etag:          etag,
 	}
 
 	wfrJson, _ := json.Marshal(req)
@@ -1221,6 +1249,11 @@ func TestWorkflowInvFlow(t *testing.T) {
 		for _, step := range testWorkflow {
 			step.wfr.ActorUser = getActor(env, wf[step.wfr.NextStepIndex].Status)
 			step.wfr.MasterPostKey = createdPid[env.td.BorChannelId]
+			getUpdatedBorrows(env, updatedBorrowCallback{
+				master: func(br *Borrow) {
+					step.wfr.Etag = br.DataOrImage.MatchId
+				},
+			})
 			wfrJson, _ := json.Marshal(step.wfr)
 
 			w := httptest.NewRecorder()
@@ -1599,11 +1632,9 @@ func TestWorkflowRevert(t *testing.T) {
 			//Renew times check
 			assert.Equalf(t, step.result.renewTimes, bor.DataOrImage.RenewedTimes, "renew times is not correct")
 
+			//assert afterword clear
+			_assertAfterwordStepsCleared(t, step.status, bor.DataOrImage.Worflow)
 
-                        //assert afterword clear
-                        _assertAfterwordStepsCleared(t, step.status, bor.DataOrImage.Worflow)
-
-                        
 		}
 
 	})
@@ -1682,6 +1713,10 @@ func TestWorkflowRevert(t *testing.T) {
 		var br Borrow
 		json.Unmarshal([]byte(masterPost.Message), &br)
 		assert.Containsf(t, br.RelationKeys.Keepers, newKp2Post.Id, "new keeper2 should be in master's relation")
+
+		var kp2br Borrow
+		json.Unmarshal([]byte(newKp2Post.Message), &kp2br)
+		assert.Equalf(t, env.td.BookPostIdPub, kp2br.RelationKeys.Book, "new keeper2's book post id should be set")
 
 	})
 }
@@ -2321,10 +2356,17 @@ func TestWorkflowBorrowDelete(t *testing.T) {
 	}
 
 	performDelete := func(env *workflowEnv, status string, assertError bool) {
+		var etag string
+		getUpdatedBorrows(env, updatedBorrowCallback{
+			master: func(br *Borrow) {
+				etag = br.DataOrImage.MatchId
+			},
+		})
 		wfrJson, _ := json.Marshal(WorkflowRequest{
 			ActorUser:     getActor(env, status),
 			MasterPostKey: env.createdPid[env.td.BorChannelId],
 			Delete:        true,
+			Etag:          etag,
 		})
 
 		w := httptest.NewRecorder()
@@ -2551,12 +2593,12 @@ func TestMultiRoles(t *testing.T) {
 
 		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
 
-                var chosenId string
-                if env.worker == env.td.ABook.LibworkerUsers[0]{
-                      chosenId = "zzh-book-001 b3"
-                }else{
-                      chosenId = "zzh-book-001 b1"
-                }
+		var chosenId string
+		if env.worker == env.td.ABook.LibworkerUsers[0] {
+			chosenId = "zzh-book-001 b3"
+		} else {
+			chosenId = "zzh-book-001 b1"
+		}
 		//the actor keeper won't be the worker, but the keeper(worker) shouldn't be deleted
 		performNext(t, env, STATUS_KEEPER_CONFIRMED, false, performNextOption{chosen: chosenId})
 		assert.Equalf(t, 0, len(env.realbrDelPosts[env.worker_botId]), "keeper should not be deleted.")
@@ -2577,15 +2619,15 @@ func TestMultiRoles(t *testing.T) {
 				keepersAsLibworkers: true,
 			},
 		})
-              
+
 		performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
 
-                var chosenId string
-                if env.worker == env.td.ABook.LibworkerUsers[0]{
-                      chosenId = "zzh-book-001 b3"
-                }else{
-                      chosenId = "zzh-book-001 b1"
-                }
+		var chosenId string
+		if env.worker == env.td.ABook.LibworkerUsers[0] {
+			chosenId = "zzh-book-001 b3"
+		} else {
+			chosenId = "zzh-book-001 b1"
+		}
 		//the actor keeper won't be the worker, but the keeper(worker) shouldn't be deleted
 		performNext(t, env, STATUS_KEEPER_CONFIRMED, false, performNextOption{chosen: chosenId})
 
@@ -2607,4 +2649,36 @@ func TestMultiRoles(t *testing.T) {
 		})
 
 	})
+}
+
+func TestWorkflowStale(t *testing.T) {
+	t.Run("wf stale", func(t *testing.T) {
+		env := newWorkflowEnv()
+		performNext(t, env, STATUS_CONFIRMED, true, performNextOption{
+			errorMessage: env.plugin.i18n.GetText("system-busy"),
+			etag:         model.NewId(),
+		})
+
+		//recover
+                var matchid string
+		getUpdatedBorrows(env, updatedBorrowCallback{
+			master: func(br *Borrow) {
+				matchid = br.DataOrImage.MatchId
+			},
+		})
+
+                performNext(t, env, STATUS_CONFIRMED, false, performNextOption{etag:matchid})
+
+	})
+
+	// t.Run("book stale", func(t *testing.T) {
+	// 	env := newWorkflowEnv()
+	// 	env.td.ABook.LastUpdated = env.td.ABook.LastUpdated + 1*int64(time.Hour)
+	// 	performNext(t, env, STATUS_CONFIRMED, true, performNextOption{
+	// 		errorMessage: env.plugin.i18n.GetText("system-busy"),
+	// 	})
+	// 	//recover
+	// 	env.td.ABook.LastUpdated = env.td.ABook.LastUpdated - 2*int64(time.Hour)
+	// 	performNext(t, env, STATUS_CONFIRMED, false, performNextOption{})
+	// })
 }

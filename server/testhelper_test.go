@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -112,6 +113,7 @@ func NewTestData(bookInject ...bookInjectOptions) *TestData {
 		LibworkerNames:    []string{"wkname1", "wkname2"},
 		IsAllowedToBorrow: true,
 		Tags:              []string{},
+		MatchId:           model.NewId(),
 		Relations: Relations{
 			REL_BOOK_PRIVATE:   td.BookPostIdPri,
 			REL_BOOK_INVENTORY: td.BookPostIdInv,
@@ -260,6 +262,19 @@ func NewTestData(bookInject ...bookInjectOptions) *TestData {
 			Id: td.Keeper2Id_botId,
 		}, nil)
 
+		api.On("GetChannelMember", td.BorChannelId, mock.AnythingOfType("string")).Return(
+			func(channelid string, userid string) *model.ChannelMember {
+				if userid == td.Worker1Id {
+					return &model.ChannelMember{}
+				}
+				return nil
+			}, func(channelid string, userid string) *model.AppError {
+				if userid == td.Worker1Id {
+					return nil
+				}
+				return model.NewAppError("GetChannelMember", "app.channel.get_member.missing.app_error", nil, "", http.StatusNotFound)
+			})
+
 		api.On("LogError",
 			mock.AnythingOfType("string"),
 			mock.AnythingOfType("string"),
@@ -339,9 +354,25 @@ func NewTestData(bookInject ...bookInjectOptions) *TestData {
 					)
 				}
 			})
+		api.On("LogInfo",
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+			mock.Anything).Return()
+		api.On("LogInfo",
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+			mock.Anything).Return()
 		// if option.includeDeleteAnything {
 		// 	api.On("DeletePost", mock.AnythingOfType("string")).Return(nil)
-		// }
+		// }:noh
 
 		//------------------------------
 		//Books Mock
@@ -706,7 +737,9 @@ func GenerateBorrowRequest(td *TestData, plugin *Plugin, api *plugintest.API, in
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/borrow", bytes.NewReader(td.ReqKeyJson))
+	reqkey := td.ReqKey
+	reqkeyJson, _ := json.Marshal(reqkey)
+	r := httptest.NewRequest("POST", "/borrow", bytes.NewReader(reqkeyJson))
 	plugin.ServeHTTP(nil, w, r)
 
 	return func() ReturnedInfo {
@@ -812,9 +845,9 @@ func _initPassed(workflow []Step, fromStep Step, toStep Step, passed map[string]
 	tempPassed[fromStep.Status] = struct{}{}
 
 	if fromStep.Status == toStep.Status {
-                for passedStatus := range tempPassed {
-                    passed[passedStatus] = struct{}{} 
-                }
+		for passedStatus := range tempPassed {
+			passed[passedStatus] = struct{}{}
+		}
 		return
 	}
 
@@ -836,11 +869,11 @@ type _assertAfterwordStepsClearedParams struct {
 
 func _assertAfterwordStepsCleared(t *testing.T, status string, wf []Step, params ..._assertAfterwordStepsClearedParams) {
 
-        index := _getIndexByStatus(status, wf)
+	index := _getIndexByStatus(status, wf)
 
 	if params == nil {
-                passed := map[string]struct{}{}         
-                _initPassed(wf, wf[0], wf[index], passed)
+		passed := map[string]struct{}{}
+		_initPassed(wf, wf[0], wf[index], passed)
 		param := _assertAfterwordStepsClearedParams{
 			passed: passed,
 		}
@@ -862,8 +895,8 @@ func _assertAfterwordStepsCleared(t *testing.T, status string, wf []Step, params
 		if _, ok := param.passed[nextStep.Status]; ok {
 			return
 		}
-                assert.Equalf(t, int64(0), nextStep.ActionDate, "action date should be cleared, status %v, next status: %v", status, nextStep.Status)
-                assert.Equalf(t, false, nextStep.Completed, "completed should be false, status %v, next status: %v", status, nextStep.Status)
+		assert.Equalf(t, int64(0), nextStep.ActionDate, "action date should be cleared, status %v, next status: %v", status, nextStep.Status)
+		assert.Equalf(t, false, nextStep.Completed, "completed should be false, status %v, next status: %v", status, nextStep.Status)
 		_assertAfterwordStepsCleared(t, wf[i].Status, wf, param)
 	}
 

@@ -51,6 +51,7 @@ interface BookPublic {
         inventory: string;
     };
     upd_isAllowedToBorrow: boolean;
+    match_id: string;
 }
 
 interface BookInventory {
@@ -143,6 +144,7 @@ interface BorrowRequest {
     step_index: number;
     renewed_times: number;
     tags: string[];
+    match_id: string;
 }
 
 type roleType = "MASTER" | "BORROWER" | "LIBWORKER" | "KEEPER";
@@ -167,4 +169,5 @@ interface WorkflowRequest {
     delete?: boolean;
     backward?: boolean;
     chosen_copy_id?: string;
+    etag: string;
 }

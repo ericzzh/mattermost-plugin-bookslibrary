@@ -42,8 +42,14 @@ func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter,
 		defer p._unlock(all)
 
 		p.API.LogError("Failed to lock and get posts from workflow requests.", "err", err.Error())
+		var errorMessage string
+		if errors.Is(err, ErrLocked) || errors.Is(err, ErrStale) {
+			errorMessage = p.i18n.GetText("system-busy")
+		} else {
+			errorMessage = p.i18n.GetText("failed-to-get-borrow")
+		}
 		resp, _ := json.Marshal(Result{
-			Error: "Failed to lock and get posts from workflow requests.",
+			Error: errorMessage,
 		})
 
 		w.Write(resp)
@@ -57,9 +63,15 @@ func (p *Plugin) handleWorkflowRequest(c *plugin.Context, w http.ResponseWriter,
 	bookInfo, err := p._lockAndGetABook(bookPostId)
 	if err != nil {
 		defer lockmap.Delete(bookPostId)
-		p.API.LogError("Failed to lock or get a book.", "err", fmt.Sprintf("%+v", err))
+		p.API.LogError("Failed to lock or get a book.", "err", err.Error())
+		var errorMessage string
+		if errors.Is(err, ErrLocked) || errors.Is(err, ErrStale) {
+			errorMessage = p.i18n.GetText("system-busy")
+		} else {
+			errorMessage = p.i18n.GetText("failed-to-get-book")
+		}
 		resp, _ := json.Marshal(Result{
-			Error: "Failed to lock or get a book.",
+			Error: errorMessage,
 		})
 
 		w.Write(resp)
@@ -428,8 +440,8 @@ func (p *Plugin) _copyFromMasterAndMark(all map[string][]*borrowWithPost, bookIn
 		var nBrq *BorrowRequest
 		brq, err := p._makeBorrowRequest(
 			&BorrowRequestKey{
-				bookInfo.pubPost.Id,
-				master.borrow.DataOrImage.BorrowerUser,
+				BookPostId:   bookInfo.pubPost.Id,
+				BorrowerUser: master.borrow.DataOrImage.BorrowerUser,
 			},
 			master.borrow.DataOrImage.BorrowerUser,
 			roles,
@@ -528,6 +540,7 @@ func (p *Plugin) _copyFromMasterAndMark(all map[string][]*borrowWithPost, bookIn
 					borrow: &Borrow{
 						Role: roleByUser[keeperUser],
 						RelationKeys: RelationKeys{
+							Book:   bookInfo.pubPost.Id,
 							Master: master.post.Id,
 						},
 						DataOrImage: brqByUser[keeperUser],
@@ -649,6 +662,8 @@ func (p *Plugin) _process(req *WorkflowRequest, all map[string][]*borrowWithPost
 		passed := map[string]struct{}{}
 		p._initPassed(workflow, workflow[0], *nextStep, passed)
 		p._clearNextSteps(nextStep, workflow, passed)
+
+		br.borrow.DataOrImage.MatchId = model.NewId()
 	}
 
 	//Set other roles' borrow request
@@ -784,12 +799,28 @@ func (p *Plugin) _loadAndLock(req *WorkflowRequest) (map[string][]*borrowWithPos
 		return nil, errors.New(fmt.Sprintf("Lock %v error", MASTER))
 	}
 
+	// p.API.LogInfo("Checking stock.",
+	// 	"actor", req.ActorUser,
+	// 	"master", req.MasterPostKey,
+	// )
+
 	master, err := p._getBorrowById(req.MasterPostKey)
 	if err != nil {
 		// not found is a fatal error for master post
 		// so it should be end (different with other kind posts)
 		defer lockmap.Delete(req.MasterPostKey)
 		return nil, errors.Wrapf(err, fmt.Sprintf("Get %v borrow error", MASTER))
+	}
+
+	// p.API.LogInfo("Checking stale.",
+	// 	"actor", req.ActorUser,
+	// 	"lastupdated", master.borrow.DataOrImage.MatchId,
+	// 	"etag", req.Etag,
+	// 	"stale", master.borrow.DataOrImage.MatchId != req.Etag)
+
+	if master.borrow.DataOrImage.MatchId != req.Etag {
+		defer lockmap.Delete(req.MasterPostKey)
+		return nil, errors.Wrapf(ErrStale, fmt.Sprintf("Get %v borrow stale", MASTER))
 	}
 	allBorrows[MASTER] = append(allBorrows[MASTER], master)
 
@@ -1114,6 +1145,9 @@ func (p *Plugin) _notifyStatusChange(all map[string][]*borrowWithPost, req *Work
 		MASTER, BORROWER, LIBWORKER, KEEPER,
 	} {
 		for _, br := range all[role] {
+			if br.delete {
+				continue
+			}
 			currStep := br.borrow.DataOrImage.Worflow[br.borrow.DataOrImage.StepIndex]
 
 			relatedRoleSet := ConvertStringArrayToSet(currStep.RelatedRoles)
