@@ -476,11 +476,11 @@ func (p *Plugin) _copyFromMasterAndMark(all map[string][]*borrowWithPost, bookIn
 		return nil
 	}
 
-	if err := __setNoKeeperAndMake(BORROWER, all[BORROWER][0].borrow.DataOrImage.BorrowerUser); err != nil {
+	if err := __setNoKeeperAndMake(BORROWER, all[MASTER][0].borrow.DataOrImage.BorrowerUser); err != nil {
 		return err
 	}
 
-	if err := __setNoKeeperAndMake(LIBWORKER, all[LIBWORKER][0].borrow.DataOrImage.LibworkerUser); err != nil {
+	if err := __setNoKeeperAndMake(LIBWORKER, all[MASTER][0].borrow.DataOrImage.LibworkerUser); err != nil {
 		return err
 	}
 

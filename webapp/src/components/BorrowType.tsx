@@ -601,8 +601,8 @@ function BorrowType(props: any) {
 
     const participants = (
         <Grid container spacing={1}>
-            <Grid item>
-                {borrow.dataOrImage.borrower_name && (
+            {borrow.dataOrImage.borrower_name && (
+                <Grid item>
                     <Chip
                         size={"medium"}
                         // variant={"outlined"}
@@ -615,8 +615,8 @@ function BorrowType(props: any) {
                             borrow.dataOrImage.borrower_user
                         )}
                     />
-                )}
-            </Grid>
+                </Grid>
+            )}
             <Grid item>
                 <Chip
                     size={"medium"}
@@ -631,22 +631,23 @@ function BorrowType(props: any) {
                     )}
                 />
             </Grid>
-            <Grid item>
-                {borrow.dataOrImage.keeper_infos && Object.entries(borrow.dataOrImage.keeper_infos).map(
+            {borrow.dataOrImage.keeper_infos &&
+                Object.entries(borrow.dataOrImage.keeper_infos).map(
                     ([user, info]) => (
-                        <Chip
-                            size={"medium"}
-                            // variant={"outlined"}
-                            icon={<HouseIcon />}
-                            color="primary"
-                            label={info.name}
-                            className={"PaticipantCommon PaticipantKeeper"}
-                            clickable
-                            onClick={handleRoleUserClick(user)}
-                        />
+                        <Grid item>
+                            <Chip
+                                size={"medium"}
+                                // variant={"outlined"}
+                                icon={<HouseIcon />}
+                                color="primary"
+                                label={info.name}
+                                className={"PaticipantCommon PaticipantKeeper"}
+                                clickable
+                                onClick={handleRoleUserClick(user)}
+                            />
+                        </Grid>
                     )
                 )}
-            </Grid>
         </Grid>
     );
 
