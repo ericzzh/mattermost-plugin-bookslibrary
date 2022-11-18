@@ -4,6 +4,7 @@ import (
 	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/mattermost/mattermost-server/v5/plugin"
 	"net/http"
+	"net/url"
 	"sync"
 )
 
@@ -42,6 +43,12 @@ type Plugin struct {
 
 // ServeHTTP demonstrates a plugin that handles HTTP requests by greeting the world.
 func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("Mattermost-User-ID")
+	if userID == "" {
+	  	http.Redirect(w, r, *p.API.GetConfig().ServiceSettings.SiteURL+"/login?redirect_to="+url.QueryEscape(r.RequestURI), http.StatusFound)
+	    // http.Error(w, "Not authorized", http.StatusUnauthorized)
+      return
+	}
 	switch r.URL.Path {
 	case "/borrow":
 		p.handleBorrowRequest(c, w, r)
