@@ -16,21 +16,21 @@
         "introduction":"",
         "book_index":"",
         "isAllowedToBorrow":true,
-        "libworker_users":["zzh"],
-        "keeper_users":["zzh"],
+        "libworker_users":["ericzzh"],
+        "keeper_users":["ericzzh"],
         "stock":3000,
         "transmit_out":0,
         "lending":0,
         "transmit_in":0,
         "copy_keeper_map":{
             "zzh-book-001 b1":{
-                "user":"zzh"
+                "user":"ericzzh"
             },
             "zzh-book-001 b2":{
-                "user":"zzh"
+                "user":"ericzzh"
             },
             "zzh-book-001 b3":{
-                "user":"zzh"
+                "user":"ericzzh"
             }
         },
         "copies":{

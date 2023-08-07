@@ -19,6 +19,7 @@ export default class Plugin {
         registry: PluginRegistry,
         store: Store<GlobalState, Action<Record<string, unknown>>>
     ) {
+        console.log("ZZH is testing....")
         // @see https://developers.mattermost.com/extend/plugins/webapp/reference/
         registry.registerPostTypeComponent("custom_book_type", BookType);
         registry.registerPostTypeComponent("custom_borrow_type", BorrowType);
